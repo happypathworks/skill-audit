@@ -143,4 +143,8 @@ MIT. See `LICENSE`. Use it, fork it, strip the parts you don't want.
 Happy Path Works builds Claude skills as systems: explicit triggers, enforced
 hard-fails, stated scope boundaries, a worked example per skill.
 
+Changes to this tool, and the next ones as they ship, go out on the list:
+[happypathworks.beehiiv.com](https://happypathworks.beehiiv.com/subscribe?utm_source=skill-audit).
+No cadence promised beyond that — it is a changelog you do not have to poll.
+
 Questions and bug reports: hello@happypath.works
