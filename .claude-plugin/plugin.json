@@ -1,0 +1,11 @@
+{
+  "name": "skill-audit",
+  "description": "Lints a Claude skill against a seven-gate quality floor and reports it gate by gate, with a specific fix for each miss.",
+  "author": {
+    "name": "Happy Path Works",
+    "email": "hello@happypath.works"
+  },
+  "homepage": "https://github.com/happypathworks/skill-audit",
+  "repository": "https://github.com/happypathworks/skill-audit",
+  "license": "MIT"
+}

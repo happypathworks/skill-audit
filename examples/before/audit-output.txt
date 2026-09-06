@@ -1,0 +1,24 @@
+skill_audit — release-notes
+           examples/before/release-notes/SKILL.md
+
+  [1] Names the gap              REVIEW No gap statement detected.
+        → State in one sentence what the base model gets wrong or does inconsistently without this skill.
+  [2] Deterministic entry        REVIEW No trigger mechanism detected at all.
+        → Declare how the skill fires — a deterministic entry (a prefix or unambiguous condition) is the most predictable.
+  [3] Enforced hard-fails        REVIEW Rule-like imperatives are present but no explicit hard-fail is declared or enforced.
+        → If any of these must always hold, name it as a hard-fail and back it with a check rather than leaving it as prose.
+  [4] Verify before voice        FAIL   A countable/spec'd constraint is present but no verification step was detected.
+        → Write the output around a verified result — run the check first, then speak. (Gate 4)
+  [5] Loud failure, named exit   REVIEW No scope boundary detected.
+        → Confirm the skill can't be pulled out of scope, or add a boundary with a named exit.
+  [6] Survives cold handoff      REVIEW Cold-handoff survival can't be settled by a static lint.
+        → Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result.
+  [7] Deciding example           REVIEW An example is present but reads like a happy path.
+        → Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)
+
+FAIL 1   REVIEW 6   PASS 0
+
+VERDICT: FAIL
+At least one gate failed on a detectable anti-pattern. Fix the → items and re-run.
+
+before exit: 1
