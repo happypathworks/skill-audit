@@ -12,6 +12,7 @@ description: >-
   happy-path example — that separate a product from a prompt. This skill runs
   skill_audit.py and writes the verdict around the exit code the check actually
   returns.
+license: MIT
 ---
 
 # skill-audit
@@ -54,6 +55,13 @@ with `python`. Nothing else about the invocation changes.
 Read its exit code and its gate table. Present the verdict, the per-gate lines,
 and the `→` fixes. Do not add gates it did not report, and do not soften a FAIL
 into a suggestion — the point of the tool is that the verdict is mechanical.
+
+The table opens with `[R] References resolve` — a preflight, not a gate. It
+checks that every path the skill *claims to ship* exists, and reports how many
+workspace paths it skipped as out of reach. Report it as the script gives it:
+an `[R]` FAIL is a missing file, not a design flaw, and the fix is to ship the
+file or fix the path. Do not extend it to the paths it skipped — those need a
+cold run, which this skill does not perform. `--no-refs` skips the preflight.
 
 ## Hard-fails (enforced by skill_audit.py)
 

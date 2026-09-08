@@ -8,6 +8,12 @@ you tell.
     Added   — seven-gate floor, exit codes 0 / 2 / 1 / 3.
     Added   — worked example: the same skill before and after, with the real
               output of both runs.
+    Added   — [R] reference-resolution preflight: every path a skill claims
+              to ship must exist, checked before the Floor. Workspace and
+              runtime paths are counted as skipped, never flagged. Zero false
+              positives across a 31-skill known-good corpus. --no-refs skips it.
+    Added   — reference fixtures (examples/refs/broken, examples/refs/intact)
+              and preflight assertions in the bundled regression test.
     Added   — bundled fixture regression test (tests/test_fixtures.py).
     Added   — setup guide.
 

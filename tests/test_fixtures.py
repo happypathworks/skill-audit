@@ -10,6 +10,12 @@ no arguments: clone the repo, run this, get a verdict.
                                     anti-pattern and must stay detected.
     examples/after/release-notes    must exit 2 (REVIEW) — the repaired skill
                                     must NOT trip a false-positive FAIL.
+    examples/refs/broken            must exit 1 (FAIL)   — the reference
+                                    preflight must still catch a bundled path
+                                    that is not there, while leaving the
+                                    workspace paths beside it alone.
+    examples/refs/intact            must exit 2 (REVIEW) — the same skill with
+                                    the path repaired must come back clean.
 
 The second assertion is the one that matters. A lint that fails good input
 loses a stranger's trust on first contact, and there is no second contact.
@@ -31,9 +37,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CHECKER = os.path.join(ROOT, "skill_audit.py")
 
+# (path, expected exit code, label, expected preflight status or None)
+# The fourth field asserts the [R] preflight line directly. Exit code alone is
+# not enough: a gate FAIL elsewhere would mask a preflight that stopped firing,
+# and a check that silently never fires is worse than no check.
 CASES = [
-    ("examples/before/release-notes", 1, "FAIL"),
-    ("examples/after/release-notes", 2, "REVIEW"),
+    ("examples/before/release-notes", 1, "FAIL", None),
+    ("examples/after/release-notes", 2, "REVIEW", None),
+    ("examples/refs/broken", 1, "FAIL", "FAIL"),
+    ("examples/refs/intact", 2, "REVIEW", "PASS"),
 ]
 
 
@@ -43,7 +55,7 @@ def main():
         return 2
 
     failures = 0
-    for rel, expected, label in CASES:
+    for rel, expected, label, ref_status in CASES:
         path = os.path.join(ROOT, rel)
         if not os.path.isdir(path):
             print("test_fixtures: fixture missing at %s" % path, file=sys.stderr)
@@ -60,12 +72,21 @@ def main():
             encoding="utf-8", errors="replace",
         )
         got = proc.returncode
-        if got == expected:
-            print("  ok    %-32s exit %d (%s)" % (rel, got, label))
+        ref_line = next((l for l in proc.stdout.splitlines() if "[R]" in l), "")
+        ref_got = next((s for s in ("FAIL", "REVIEW", "PASS") if s in ref_line), None)
+        bad = got != expected or (ref_status is not None and ref_got != ref_status)
+
+        if not bad:
+            extra = "" if ref_status is None else ", preflight %s" % ref_got
+            print("  ok    %-32s exit %d (%s%s)" % (rel, got, label, extra))
         else:
             failures += 1
-            print("  FAIL  %-32s exit %d, expected %d (%s)"
-                  % (rel, got, expected, label))
+            if got != expected:
+                print("  FAIL  %-32s exit %d, expected %d (%s)"
+                      % (rel, got, expected, label))
+            else:
+                print("  FAIL  %-32s preflight %s, expected %s"
+                      % (rel, ref_got, ref_status))
             for line in proc.stdout.splitlines():
                 print("        | %s" % line)
 

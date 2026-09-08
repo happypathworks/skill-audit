@@ -44,6 +44,25 @@ be settled by a static lint — proving a skill survives a cold handoff means
 running it in a clean context, which is something a person does. A tool that
 printed a green `PASS` there would be lying about what it checked.
 
+## The preflight
+
+Before the gates, one integrity check. `[R] References resolve` verifies that
+every path the skill *claims to ship* actually exists — a renamed helper, a
+deleted script, a `references/` file that moved. Gate 3 cannot see this: it
+counts a skill "enforced" if any script sits in its directory, which a stale
+reference still satisfies.
+
+It is deliberately narrow. A path counts only where the skill's own layout
+vouches for it — its first segment is a directory the skill ships, or it is a
+bare script the skill tells you to **run** in a skill that ships scripts.
+Everything else a SKILL.md mentions (`word/document.xml` inside a document
+being unpacked, `.claude/settings.json` in the user's repo, an output path, a
+script the model is told to write) is a workspace path: it cannot resolve here,
+so it is counted as skipped and never flagged. Verified against 31 known-good
+skills with zero false positives.
+
+Pass `--no-refs` to skip it.
+
 ## The seven gates
 
 | | Gate | A failure looks like |
@@ -104,7 +123,8 @@ Or run the checker directly, without the skill:
 
     exit 0   PASS     every gate passed
     exit 2   REVIEW   no failures, but a gate needs a human ruling
-    exit 1   FAIL     at least one gate failed — fix the → items and re-run
+    exit 1   FAIL     a gate failed, or a bundled file is missing — fix the
+                     → items and re-run
     exit 3   ERROR    nothing gradable at that path
 
 ## Worked example
@@ -115,6 +135,8 @@ gate-by-gate account of what changed and why. Start there.
 
     python3 skill_audit.py examples/before/release-notes   # exit 1, FAIL
     python3 skill_audit.py examples/after/release-notes    # exit 2, REVIEW
+    python3 skill_audit.py examples/refs/broken            # exit 1, missing file
+    python3 skill_audit.py examples/refs/intact            # exit 2, refs resolve
 
 ## Tests
 

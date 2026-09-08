@@ -20,6 +20,7 @@ USAGE
                     or a folder of skills (each in its own subdirectory).
 
     --json          machine-readable output
+    --no-refs       skip the reference-resolution preflight
     --quiet         suppress per-gate evidence, print the gate line + verdict
     --log-row       emit a markdown row for a build-notes gate log
 
@@ -34,8 +35,24 @@ EXIT CODES
     1   FAIL    at least one gate failed on a high-precision anti-pattern: an
                 explicitly-declared hard-fail with no backing check, a countable
                 constraint with no verification, a soft-only scope exit, or
-                context the file does not contain. Fix and re-run.
+                context the file does not contain -- or the preflight found a
+                file the skill says it ships and does not. Fix and re-run.
     3   ERROR   nothing gradable was found at the given path(s).
+
+THE [R] PREFLIGHT
+    Before the Floor, one integrity check: every path the skill claims to ship
+    must exist. It runs first because a skill pointing at a file that is not
+    there is broken the way a build break is broken, and no gate below can see
+    it -- Gate 3 counts a skill "enforced" if ANY script sits in its directory,
+    which a renamed or deleted one still satisfies.
+
+    It grades only paths the skill's own layout vouches for: a path whose first
+    segment is a directory the skill ships, or a bare script it tells you to RUN
+    in a skill that ships scripts. Everything else in a SKILL.md -- runtime
+    paths inside a document being unpacked, files in the user's repo, outputs,
+    a script the model is told to write -- is a workspace path, cannot resolve
+    here, and is reported as skipped rather than flagged. That line is the whole
+    design: the check is narrow so that a FAIL means something.
 
 WHAT THIS IS NOT
     It does not rewrite your skill. It diagnoses and points; fixing is your
@@ -373,13 +390,137 @@ def gate7(sk):
         "Confirm by eye that at least one example shows a catch, not the happy path — the obvious case succeeding is decoration. (Gate 7)"
 
 
+# ------------------------------------------------------- preflight: refs ----
+#
+# The hard part of this check is not finding paths — it is telling a path that
+# addresses THIS SKILL'S OWN BUNDLE from one that addresses the workspace the
+# skill operates on. A SKILL.md is full of the second kind: `word/document.xml`
+# inside a document being unpacked, `.claude/settings.json` in the user's repo,
+# `../out.docx` as an output, a script the skill tells the model to write at
+# run time. None of those can or should resolve here, and flagging them is the
+# false positive that would make this check worthless.
+#
+# So a token counts as a bundle reference only when the skill's own layout
+# vouches for it: its first segment is a directory the skill actually ships, or
+# it is a bare script name and the skill ships scripts at its root. Anything
+# else is a workspace path and is left alone — reported as skipped, never as
+# a finding.
+
+# Anything containing these is a placeholder, a glob, a URL, a shell
+# construct, or a traversal — not a concrete path inside this skill.
+REF_REJECT = re.compile(r"[<>{}*?|$\"'\\]|://|^[#~/]|^\.\.|^-")
+
+# Trailing punctuation that belongs to the prose, not the path.
+REF_TRAILING = ".,:;!?)]}\u2019\u201d"
+
+INLINE_CODE = re.compile(r"`([^`\n]+)`")
+FENCED_CODE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+
+
+INTERPRETERS = {"python", "python3", "python2", "py", "node", "deno", "bun",
+                "bash", "sh", "zsh", "ruby", "perl", "pwsh", "powershell"}
+
+
+def _ref_tokens(body):
+    """Path-shaped tokens from code spans, fenced blocks and link targets.
+
+    Yields (token, invoked) — invoked is True when the token is being executed
+    (an interpreter immediately before it, or a ./ prefix). Bare prose is not
+    collected: a filename in running text is a mention, not a reference.
+    """
+    spans = [m.group(1).split() for m in INLINE_CODE.finditer(body)]
+    spans += [m.group(1).split() for m in FENCED_CODE.finditer(body)]
+    spans += [[m.group(1)] for m in MD_LINK.finditer(body)]
+
+    out = []
+    for span in spans:
+        for i, raw in enumerate(span):
+            tok = raw.strip().rstrip(REF_TRAILING).replace("\\", "/")
+            invoked = tok.startswith("./") or (i and span[i - 1].lower() in INTERPRETERS)
+            tok = tok[2:] if tok.startswith("./") else tok
+            if not tok or REF_REJECT.search(tok) or not os.path.splitext(tok)[1]:
+                continue
+            out.append((tok, invoked))
+    return out
+
+
+def _bundle_refs(sk):
+    """Split the token pool into (bundle claims, skipped workspace paths)."""
+    try:
+        entries = os.listdir(sk["dir"])
+    except OSError:
+        return [], []
+    dirs = {e for e in entries if os.path.isdir(os.path.join(sk["dir"], e))}
+
+    # Fold duplicates first, ORing the invoked flag: a script named in prose
+    # and run in a code block is invoked. Classifying on first sight instead
+    # would let the earlier, weaker mention decide.
+    order, invoked_any = [], {}
+    for tok, invoked in _ref_tokens(sk["body"]):
+        if tok not in invoked_any:
+            order.append(tok)
+        invoked_any[tok] = invoked_any.get(tok, False) or invoked
+
+    claims, skipped = [], []
+    for tok in order:
+        invoked = invoked_any[tok]
+        if "/" in tok:
+            # A path is this skill's business only if it starts in a directory
+            # this skill actually ships. `scripts/build.py` in a skill with a
+            # scripts/ dir is a claim; `word/document.xml` in one without a
+            # word/ dir is a runtime path in someone else's document.
+            (claims if tok.split("/", 1)[0] in dirs else skipped).append(tok)
+        elif (invoked and sk["scripts"]
+              and os.path.splitext(tok)[1].lower() in SCRIPT_EXT):
+            # A bare script name is a claim only when the skill tells you to
+            # RUN it AND the skill ships scripts of its own. Naming a file in
+            # a tree diagram is not a claim to ship it, and a skill that ships
+            # nothing is telling the model to write the script it then runs --
+            # both are common, and neither is a broken reference.
+            claims.append(tok)
+        else:
+            skipped.append(tok)
+    return claims, skipped
+
+
+def check_refs(sk):
+    """Preflight: every path the skill claims to ship must resolve.
+
+    This is an integrity check, not a quality gate. It runs before the Floor
+    because a skill pointing at a file that is not there is broken the way a
+    build break is broken, and no gate below can see it.
+    """
+    claims, skipped = _bundle_refs(sk)
+    missing = [t for t in claims
+               if not os.path.exists(os.path.normpath(os.path.join(sk["dir"], t)))]
+    tail = (" (%d workspace path(s) skipped — not this skill's to resolve)" % len(skipped)) if skipped else ""
+
+    if missing:
+        shown = ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else "")
+        return ("FAIL",
+                "%d of %d bundled path(s) do not exist: %s%s" % (len(missing), len(claims), shown, tail),
+                "A file the skill says it ships and does not is a skill that breaks on first run, "
+                "and no gate below can see it. Fix the path or ship the file. (Preflight)",
+                missing)
+    if not claims:
+        return ("PASS", "No bundled-file references to verify.%s" % tail,
+                "This checks only paths the skill claims to ship. Runtime and workspace paths "
+                "are out of its reach — a cold run is what settles those.", [])
+    return ("PASS", "All %d bundled path(s) resolve.%s" % (len(claims), tail), "", [])
+
+
 CHECKS = {1: gate1, 2: gate2, 3: gate3, 4: gate4, 5: gate5, 6: gate6, 7: gate7}
 
 
 # --------------------------------------------------------------- evaluate ----
 
-def evaluate(sk):
+def evaluate(sk, refs=True):
     findings = []
+    if refs:
+        status, msg, fix, broken = check_refs(sk)
+        findings.append({"gate": "R", "title": "References resolve", "status": status,
+                         "message": msg, "fix": fix, "broken": broken})
     for num, title in GATES:
         status, msg, fix = CHECKS[num](sk)
         findings.append({"gate": num, "title": title, "status": status,
@@ -408,7 +549,7 @@ def print_report(sk, findings, verdict, quiet=False):
     for f in findings:
         counts[f["status"]] += 1
         badge = f["status"].ljust(6)
-        print("  [%d] %-26s %s %s" % (f["gate"], f["title"], badge, f["message"]))
+        print("  [%s] %-26s %s %s" % (f["gate"], f["title"], badge, f["message"]))
         if not quiet and f["fix"] and f["status"] != "PASS":
             print("        -> %s" % f["fix"])
     print()
@@ -430,6 +571,8 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--log-row", action="store_true")
+    ap.add_argument("--no-refs", action="store_true",
+                    help="skip the reference-resolution preflight")
     args = ap.parse_args()
 
     skills = collect_skills(args.paths)
@@ -440,7 +583,7 @@ def main():
 
     results = []
     for sk in skills:
-        findings = evaluate(sk)
+        findings = evaluate(sk, refs=not args.no_refs)
         verdict, code = verdict_of(findings)
         results.append((sk, findings, verdict, code))
 
@@ -448,6 +591,7 @@ def main():
         out = [{
             "name": sk["name"], "path": sk["path"], "verdict": verdict,
             "scripts": sk["scripts"],
+            "broken_refs": [b for f in findings for b in f.get("broken", [])],
             "gates": [{"gate": f["gate"], "title": f["title"], "status": f["status"],
                        "message": f["message"], "fix": f["fix"]} for f in findings],
         } for (sk, findings, verdict, code) in results]
