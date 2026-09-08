@@ -95,10 +95,16 @@ Nothing to install after that. Python 3.8+, standard library only.
 
 ## Compatibility
 
-Claude Code only. Skills do not run in the claude.ai web app or in the Claude
-desktop app's chat, and a skill folder you install locally is not visible to
-Cowork or cloud sessions. There is no minimum Claude Code version: this skill
-uses no version-gated feature.
+Runs wherever Claude runs — Claude Code, the claude.ai web app, Cowork, and the
+desktop app. This is a standard Agent Skill: a `SKILL.md` plus one Python file,
+nothing to build and nothing to fetch. There is no minimum Claude Code version
+either; the skill uses no version-gated feature.
+
+Where you install it differs by surface, and the two locations do not sync. A
+folder under `~/.claude/skills/` or `.claude/skills/` is local to Claude Code on
+that machine; skills added to your claude.ai account are the ones available in
+the web app, Cowork, cloud sessions and routines. Installing one does not install
+the other. That is about where the files live, not about where the skill can run.
 
 Python 3.8 or later, standard library only. That floor is checked, not claimed —
 CI runs the fixtures and the self-audit on 3.8 and 3.12 on every push, plus a

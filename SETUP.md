@@ -92,12 +92,17 @@ by walking up from a subdirectory. Launch from the repository root. If you want
 the plain-skill behaviour instead, delete `.claude-plugin/` from your copy; the
 checker and the skill do not read it.
 
-**Claude Code only.** Skills are a Claude Code feature. This does not run in the
-claude.ai web app, and it does not run in the Claude desktop app's chat. Skills
-synced to a claude.ai account are available in Cowork sessions, cloud sessions
-and routines — but a folder you drop into `~/.claude/skills/` or
-`.claude/skills/` is not synced, and local skill folders are not visible to those
-surfaces. Install it where you run Claude Code.
+**Every Claude surface.** Agent Skills run on Claude Code, in the claude.ai web
+app, in Cowork and in the desktop app, and this one is deliberately plain enough
+to run on all of them: a `SKILL.md`, one Python file, the standard library, and
+no build step. Nothing here needs a shell, a package manager or a repository.
+
+**Install location differs by surface, and the two do not sync.** A folder you
+drop into `~/.claude/skills/` or `.claude/skills/` is local to Claude Code on
+that machine. Skills added to your claude.ai account are the ones that reach the
+web app, Cowork sessions, cloud sessions and routines. Installing one place does
+not install the other, so put it wherever you actually work — or both. This is a
+fact about where files live, not a limit on where the skill runs.
 
 ## Use
 
