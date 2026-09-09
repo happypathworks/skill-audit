@@ -53,7 +53,7 @@ If `python3` is not on `PATH` — the usual case on Windows — run the same com
 with `python`. Nothing else about the invocation changes.
 
 Read its exit code and its gate table. Present the verdict, the per-gate lines,
-and the `→` fixes. Do not add gates it did not report, and do not soften a FAIL
+and the `->` fixes. Do not add gates it did not report, and do not soften a FAIL
 into a suggestion — the point of the tool is that the verdict is mechanical.
 
 The table opens with `[R] References resolve` — a preflight, not a gate. It

@@ -23,16 +23,17 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
+  [R] References resolve         PASS   All 1 bundled path(s) resolve.
   [1] Names the gap              PASS   A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS   A deterministic entry (prefix or unambiguous condition) is present.
   [3] Enforced hard-fails        PASS   Hard-fails are present and the skill ships a script (skill_audit.py).
   [4] Verify before voice        PASS   A hard constraint is present and a verification step is described.
   [5] Loud failure, named exit   PASS   Scope boundaries name an explicit exit (if X, refuse and do Y).
   [6] Survives cold handoff      REVIEW Cold-handoff survival can't be settled by a static lint.
-        → Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result.
+        -> Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result.
   [7] Deciding example           PASS   A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 1   PASS 6
+FAIL 0   REVIEW 1   PASS 7
 
 VERDICT: REVIEW
 No detectable failures. The REVIEW gates need a human ruling or a deeper pass (a static lint can't settle them). This is the normal result for a decent skill.
@@ -130,7 +131,7 @@ Or run the checker directly, without the skill:
     exit 0   PASS     every gate passed
     exit 2   REVIEW   no failures, but a gate needs a human ruling
     exit 1   FAIL     a gate failed, or a bundled file is missing — fix the
-                     → items and re-run
+                     -> items and re-run
     exit 3   ERROR    nothing gradable at that path
 
 ## Worked example

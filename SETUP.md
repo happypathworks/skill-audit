@@ -70,9 +70,11 @@ On most Linux and macOS systems the interpreter is `python3`; on Windows a bare
 `python` is the usual spelling and `python3` may not exist. The skill's command
 line uses `python3` and says to substitute `python` when that is missing.
 
-**Windows consoles that are not UTF-8.** The report uses `→` and `—`, neither of
-which exists in the legacy `cp1252` code page. A literal `→` in a print path once
-killed the run before any verdict was emitted, with no symptom on Linux at all.
+**Windows consoles that are not UTF-8.** The report prints an em dash (`—`) in its
+header line, and `—` does not exist in the legacy `cp1252` code page. A literal `→`
+in a print path once killed the run before any verdict was emitted, with no symptom
+on Linux at all; that arrow is gone — the fix line now reads `->` — but the em dash
+remains and the same failure class applies to it.
 The checker now reconfigures its own output stream with `errors="replace"` rather
 than assuming a modern terminal: those characters degrade to replacement marks
 and the run completes with the right exit code. This is a standing CI leg, not a
@@ -134,7 +136,7 @@ Every gate returns one of three signals, and the run exits with a matching code:
 
     exit 0  PASS     every gate passed
     exit 2  REVIEW   no failures, but a gate needs a human ruling or a deeper pass
-    exit 1  FAIL     at least one gate failed — fix the → items and re-run
+    exit 1  FAIL     at least one gate failed — fix the -> items and re-run
     exit 3  ERROR    nothing gradable at that path
 
 A clean run tops out at `REVIEW`, not a green `PASS` — because one gate (does the
