@@ -59,8 +59,21 @@ bare script the skill tells you to **run** in a skill that ships scripts.
 Everything else a SKILL.md mentions (`word/document.xml` inside a document
 being unpacked, `.claude/settings.json` in the user's repo, an output path, a
 script the model is told to write) is a workspace path: it cannot resolve here,
-so it is counted as skipped and never flagged. Verified against 31 known-good
-skills with zero false positives.
+so it is counted as skipped and never flagged. A path on a line that announces
+itself as illustrative (`**Examples**: references/finance.md for financial
+schemas`) is skipped too — that names a file *you* might write.
+
+**A missing path is only a `FAIL` when the skill points at it** — links it,
+runs it, or introduces it with a pointer verb (`see`, `load`, `defined in`).
+Named once in passing and absent, it comes back `REVIEW` instead. The reason is
+specific: a skill documenting skill layout writes `references/patterns.md` as
+advice in the same form it writes a file it really ships, so the two are
+indistinguishable on the page and calling one broken would be inventing
+evidence.
+
+Measured against a known-good corpus of 32 skills — every skill in Anthropic's
+official plugin marketplace, plus a local one — the whole lint returns zero
+`FAIL`s.
 
 Pass `--no-refs` to skip it.
 

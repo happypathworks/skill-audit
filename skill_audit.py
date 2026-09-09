@@ -34,9 +34,11 @@ EXIT CODES
                 deeper pass. This is the normal result for a decent skill.
     1   FAIL    at least one gate failed on a high-precision anti-pattern: an
                 explicitly-declared hard-fail with no backing check, a countable
-                constraint with no verification, a soft-only scope exit, or
-                context the file does not contain -- or the preflight found a
-                file the skill says it ships and does not. Fix and re-run.
+                constraint with no verification, a scope boundary whose exit is
+                an intention rather than an action, or context the file does not
+                contain -- or the preflight found a file the skill POINTS AT
+                (links, runs, or names with a pointer verb) and does not ship.
+                Fix and re-run.
     3   ERROR   nothing gradable was found at the given path(s).
 
 THE [R] PREFLIGHT
@@ -54,6 +56,14 @@ THE [R] PREFLIGHT
     here, and is reported as skipped rather than flagged. That line is the whole
     design: the check is narrow so that a FAIL means something.
 
+    One more exemption, learned the hard way: a path on a line that announces
+    itself as illustrative ("**Examples**: `references/finance.md` for
+    financial schemas") is naming a file the READER might write, not one this
+    skill ships. Skills about writing skills are full of these, and they land
+    under a references/ directory the skill does happen to ship -- the exact
+    coincidence the first-segment rule cannot see through. The exemption is
+    scoped to the line; a heading two paragraphs up exempts nothing.
+
 WHAT THIS IS NOT
     It does not rewrite your skill. It diagnoses and points; fixing is your
     pass, or the skill-creator's. It grades Claude Agent Skills (a SKILL.md,
@@ -61,6 +71,7 @@ WHAT THIS IS NOT
 """
 
 import argparse
+import bisect
 import json
 import os
 import re
@@ -244,7 +255,13 @@ CONSTRAINT_MARKERS = [
     r"\bexactly \d", r"\bno more than \d",
     # a length spec, not a stray "(1-2 words)" aside: require a limiting word
     r"\b(?:under|over|at most|at least|up to|within|max|min|no fewer than|limit(?:ed)? to)\s+\d+\s*(?:characters?|chars?|words?)\b",
-    r"\bspec(?:ification)?\b", r"\bmust match\b", r"\bcountable\b",
+    # "spec" alone is not a constraint. In engineering prose it is almost
+    # always a noun for a document -- "the MCP spec", "REPORT SPEC", "design
+    # doc, plan, spec" -- and matching it bare FAILed three known-good skills
+    # on a word that had nothing to do with a countable rule. The constraint
+    # is the skill promising its own output CONFORMS to one.
+    r"\b(?:conform(?:s|ing)?\s+to|match(?:es|ing)?|against|validate[sd]?\s+against)\s+(?:the\s+|its\s+|this\s+)?spec(?:ification)?\b",
+    r"\bto\s+spec\b", r"\bmust match\b", r"\bcountable\b",
 ]
 VERIFY_MARKERS = [
     r"\bverif(?:y|ies|ied|ication)\b", r"\bcount (?:and|then) (?:confirm|check|verify)\b",
@@ -276,8 +293,14 @@ SOFT_SCOPE_MARKERS = [
 # cold-handoff killers: references to context the file does not contain
 CONTEXT_LEAK_MARKERS = [
     r"\bas (?:we )?discussed\b", r"\bper our\b", r"\bas (?:above|before) in (?:this|the) (?:chat|thread|conversation)\b",
-    r"\byou already know\b", r"\blike (?:last time|before)\b", r"\bearlier in (?:this|the) (?:chat|thread)\b",
+    r"\blike (?:last time|before)\b", r"\bearlier in (?:this|the) (?:chat|thread)\b",
     r"\bas established (?:above|earlier)\b",
+    # "you already know" needs a discourse-deictic object to be a leak. Bare,
+    # it FAILed a known-good skill for telling the reader they know their own
+    # phone contacts -- a fact about the world, not about a prior turn.
+    r"\byou already know\b[^.\n]{0,60}\bfrom (?:our|this|the) (?:chat|thread|conversation|session|discussion)\b",
+    r"\byou already know\b[^.\n]{0,40}\bfrom (?:above|earlier|before)\b",
+    r"\byou already know (?:this|that|the drill|how this (?:goes|works)|what (?:I|we) mean)\b",
 ]
 
 # worked example
@@ -355,15 +378,33 @@ def gate4(sk):
         "Write the output around a verified result — run the check first, then speak. (Gate 4)"
 
 
+def _strip_table_rows(text):
+    """Drop markdown table rows before looking for a scope boundary.
+
+    A scope phrase inside a table cell is usually describing the artifact the
+    skill *produces* -- "a short **Out of scope** list bounds the reader's
+    worry" -- not the skill's own boundary. Reading it as the latter FAILed a
+    known-good skill for documenting a section heading.
+    """
+    return "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("|"))
+
+
 def gate5(sk):
     text = sk["body"]
-    scope = has(SCOPE_MARKERS, text)
+    scope = has(SCOPE_MARKERS, _strip_table_rows(text))
     named = has(NAMED_EXIT_MARKERS, text, flags=re.IGNORECASE | re.MULTILINE)
+    soft = has(SOFT_SCOPE_MARKERS, text)
     if scope and named:
         return "PASS", "Scope boundaries name an explicit exit (if X, refuse and do Y).", ""
-    if scope and not named:
-        return "FAIL", "Scope language is present but the exit is soft.", \
-            "Replace 'try to stay in scope' with 'if X, refuse and do Y' — a named action, not an intention. (Gate 5)"
+    if scope and soft:
+        # The anti-pattern this gate FAILs on is scope-as-intention. Naming the
+        # soft phrase is the point: quoting "try to stay in scope" at a skill
+        # that never wrote it is a fix the author cannot act on.
+        return "FAIL", "Scope language is present but the exit is soft (%r)." % soft.group(0), \
+            "Replace that with 'if X, refuse and do Y' — a named action, not an intention. (Gate 5)"
+    if scope:
+        return "REVIEW", "A scope boundary is present but the lint found no named exit.", \
+            "Confirm the boundary ends in an action — 'if X, refuse and do Y' — rather than trailing off. (Gate 5)"
     return "REVIEW", "No scope boundary detected.", \
         "Confirm the skill can't be pulled out of scope, or add a boundary with a named exit."
 
@@ -417,55 +458,105 @@ INLINE_CODE = re.compile(r"`([^`\n]+)`")
 FENCED_CODE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
+# A path on a line that announces itself as illustrative is not a claim to
+# ship that file. Skills about skills are full of these -- "**Examples**:
+# `references/finance.md` for financial schemas" is naming a file the READER
+# might write, in a skill that happens to ship a references/ directory of its
+# own, which is exactly the coincidence the first-segment rule cannot tell
+# apart. Scoped to the line: a heading two paragraphs up exempts nothing.
+ILLUSTRATIVE = re.compile(
+    r"\*\*examples?\*\*|(?:^|[\s(*_])examples?\s*:|\be\.g\.|\bfor example\b"
+    r"|\bfor instance\b|\bsuch as\b",
+    re.IGNORECASE)
+
+TOKEN_RUN = re.compile(r"\S+")
+
+# A pointer verb immediately before the path is the skill telling you the file
+# is THERE -- "see `references/api.md`", "load `references/schema.md`". That,
+# a markdown link, and an invocation are the three strong claims. A path that
+# merely appears in a bullet is a weak one, and the difference decides FAIL
+# from REVIEW below.
+POINTER_VERB = re.compile(
+    r"\b(?:see|read|reads?|load|loads?|open|run|runs?|consult|refer to|"
+    r"defined in|documented in|described in|listed in|found in|per)\b[^.\n]{0,40}$",
+    re.IGNORECASE)
+
 
 INTERPRETERS = {"python", "python3", "python2", "py", "node", "deno", "bun",
                 "bash", "sh", "zsh", "ruby", "perl", "pwsh", "powershell"}
 
 
+def _line_containing(body, line_starts, offset):
+    i = bisect.bisect_right(line_starts, offset) - 1
+    end = body.find("\n", offset)
+    return body[line_starts[i]:end if end != -1 else len(body)]
+
+
 def _ref_tokens(body):
     """Path-shaped tokens from code spans, fenced blocks and link targets.
 
-    Yields (token, invoked) — invoked is True when the token is being executed
-    (an interpreter immediately before it, or a ./ prefix). Bare prose is not
-    collected: a filename in running text is a mention, not a reference.
+    Yields (token, invoked, illustrative, strong). `invoked` is True when the
+    token is being executed (an interpreter immediately before it, or a ./
+    prefix). `illustrative` is True when the line it sits on announces itself
+    as an example. `strong` is True when the skill is pointing AT the file --
+    a markdown link, an invocation, or a pointer verb ahead of it on the line.
+    Bare prose is not collected: a filename in running text is a mention, not
+    a reference.
     """
-    spans = [m.group(1).split() for m in INLINE_CODE.finditer(body)]
-    spans += [m.group(1).split() for m in FENCED_CODE.finditer(body)]
-    spans += [[m.group(1)] for m in MD_LINK.finditer(body)]
+    line_starts = [0] + [i + 1 for i, ch in enumerate(body) if ch == "\n"]
+
+    spans = [(m.start(1), m.group(1), False) for m in INLINE_CODE.finditer(body)]
+    spans += [(m.start(1), m.group(1), False) for m in FENCED_CODE.finditer(body)]
+    spans += [(m.start(1), m.group(1), True) for m in MD_LINK.finditer(body)]
 
     out = []
-    for span in spans:
-        for i, raw in enumerate(span):
+    for base, inner, linked in spans:
+        prev = None
+        for m in TOKEN_RUN.finditer(inner):
+            raw = m.group(0)
             tok = raw.strip().rstrip(REF_TRAILING).replace("\\", "/")
-            invoked = tok.startswith("./") or (i and span[i - 1].lower() in INTERPRETERS)
+            invoked = tok.startswith("./") or (prev is not None and prev.lower() in INTERPRETERS)
+            prev = raw
             tok = tok[2:] if tok.startswith("./") else tok
             if not tok or REF_REJECT.search(tok) or not os.path.splitext(tok)[1]:
                 continue
-            out.append((tok, invoked))
+            start = base + m.start()
+            line = _line_containing(body, line_starts, start)
+            before = body[line_starts[bisect.bisect_right(line_starts, start) - 1]:start]
+            strong = linked or invoked or bool(POINTER_VERB.search(before))
+            out.append((tok, invoked, bool(ILLUSTRATIVE.search(line)), strong))
     return out
 
 
 def _bundle_refs(sk):
-    """Split the token pool into (bundle claims, skipped workspace paths)."""
+    """Split the token pool into (bundle claims, skipped paths, strong claims)."""
     try:
         entries = os.listdir(sk["dir"])
     except OSError:
-        return [], []
+        return [], [], set()
     dirs = {e for e in entries if os.path.isdir(os.path.join(sk["dir"], e))}
 
     # Fold duplicates first, ORing the invoked flag: a script named in prose
     # and run in a code block is invoked. Classifying on first sight instead
     # would let the earlier, weaker mention decide.
-    order, invoked_any = [], {}
-    for tok, invoked in _ref_tokens(sk["body"]):
+    order, invoked_any, illus_all, strong_any = [], {}, {}, set()
+    for tok, invoked, illus, strong in _ref_tokens(sk["body"]):
         if tok not in invoked_any:
             order.append(tok)
+            illus_all[tok] = True
         invoked_any[tok] = invoked_any.get(tok, False) or invoked
+        # AND, where invoked ORs: one occurrence on a real line makes the token
+        # a claim, however many illustrative mentions sit beside it.
+        illus_all[tok] = illus_all[tok] and illus
+        if strong:
+            strong_any.add(tok)
 
     claims, skipped = [], []
     for tok in order:
         invoked = invoked_any[tok]
-        if "/" in tok:
+        if illus_all[tok]:
+            skipped.append(tok)
+        elif "/" in tok:
             # A path is this skill's business only if it starts in a directory
             # this skill actually ships. `scripts/build.py` in a skill with a
             # scripts/ dir is a claim; `word/document.xml` in one without a
@@ -481,7 +572,7 @@ def _bundle_refs(sk):
             claims.append(tok)
         else:
             skipped.append(tok)
-    return claims, skipped
+    return claims, skipped, strong_any
 
 
 def check_refs(sk):
@@ -491,17 +582,32 @@ def check_refs(sk):
     because a skill pointing at a file that is not there is broken the way a
     build break is broken, and no gate below can see it.
     """
-    claims, skipped = _bundle_refs(sk)
+    claims, skipped, strong = _bundle_refs(sk)
     missing = [t for t in claims
                if not os.path.exists(os.path.normpath(os.path.join(sk["dir"], t)))]
+    hard = [t for t in missing if t in strong]
     tail = (" (%d workspace path(s) skipped — not this skill's to resolve)" % len(skipped)) if skipped else ""
 
-    if missing:
-        shown = ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else "")
+    if hard:
+        shown = ", ".join(hard[:6]) + (" ..." if len(hard) > 6 else "")
         return ("FAIL",
-                "%d of %d bundled path(s) do not exist: %s%s" % (len(missing), len(claims), shown, tail),
+                "%d of %d bundled path(s) the skill points at do not exist: %s%s"
+                % (len(hard), len(claims), shown, tail),
                 "A file the skill says it ships and does not is a skill that breaks on first run, "
                 "and no gate below can see it. Fix the path or ship the file. (Preflight)",
+                hard)
+    if missing:
+        # Missing, but only ever named in passing. A skill teaching skill
+        # layout writes `references/patterns.md` as advice in exactly the form
+        # it writes a file it really ships -- the two are byte-identical on the
+        # page, so a lint cannot call this broken without inventing evidence.
+        shown = ", ".join(missing[:6]) + (" ..." if len(missing) > 6 else "")
+        return ("REVIEW",
+                "%d of %d bundled path(s) are named but not present: %s%s"
+                % (len(missing), len(claims), shown, tail),
+                "Each is mentioned in passing, never linked, run, or pointed at — so this is either a "
+                "stale reference or prose about a file the reader would write. Only you can tell which. "
+                "(Preflight)",
                 missing)
     if not claims:
         return ("PASS", "No bundled-file references to verify.%s" % tail,

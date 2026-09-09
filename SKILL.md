@@ -60,8 +60,12 @@ The table opens with `[R] References resolve` — a preflight, not a gate. It
 checks that every path the skill *claims to ship* exists, and reports how many
 workspace paths it skipped as out of reach. Report it as the script gives it:
 an `[R]` FAIL is a missing file, not a design flaw, and the fix is to ship the
-file or fix the path. Do not extend it to the paths it skipped — those need a
-cold run, which this skill does not perform. `--no-refs` skips the preflight.
+file or fix the path. An `[R]` REVIEW is weaker on purpose — the path is absent
+but only ever named in passing, so it is either a stale reference or prose about
+a file the reader would write, and the script says so rather than choosing. Do
+not promote that REVIEW to a FAIL. Do not extend it to the paths it skipped —
+those need a cold run, which this skill does not perform. `--no-refs` skips the
+preflight.
 
 ## Hard-fails (enforced by skill_audit.py)
 

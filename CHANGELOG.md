@@ -10,8 +10,18 @@ you tell.
               output of both runs.
     Added   — [R] reference-resolution preflight: every path a skill claims
               to ship must exist, checked before the Floor. Workspace and
-              runtime paths are counted as skipped, never flagged. Zero false
-              positives across a 31-skill known-good corpus. --no-refs skips it.
+              runtime paths are counted as skipped, never flagged, as are
+              paths on a line that announces itself illustrative. A missing
+              path FAILs only when the skill points at it — a link, an
+              invocation, or a pointer verb; missing but merely mentioned is
+              REVIEW. --no-refs skips it.
+    Added   — detector precision pass on gates 4, 5, 6 and the preflight,
+              measured against a 32-skill known-good corpus (Anthropic's
+              official plugin marketplace plus one local skill): 6 FAILs,
+              all six false positives, now 0. "spec" no longer counts as a
+              countable constraint on its own; a scope boundary FAILs only
+              when its exit is soft, and names the phrase; "you already
+              know" needs a discourse object.
     Added   — reference fixtures (examples/refs/broken, examples/refs/intact)
               and preflight assertions in the bundled regression test.
     Added   — bundled fixture regression test (tests/test_fixtures.py).
