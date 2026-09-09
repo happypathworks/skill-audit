@@ -54,8 +54,10 @@ later), no `!` commands and no `@` file references. Any Claude Code that reads
 listing is a GitHub-sourced marketplace entry pinned to a commit, not an
 `archive` source, so the v2.1.224 floor that applies to archive-type sources does
 not apply here. If `/plugin` is not recognised in your session, that is the
-version to fix, and updating Claude Code is the whole fix. The listing is pending
-review; until it lands, use the folder install above.
+version to fix, and updating Claude Code is the whole fix. **No such listing
+exists yet** — nothing has been submitted, so the folder install above is the
+only route today. The paragraph is here to state the floor that will apply if
+and when one lands, not to describe a door you can currently walk through.
 
 **Python 3.8 or later, standard library only.** Six imports: `argparse`, `json`,
 `os`, `re`, `sys`, and `date` from `datetime`. The floor is checked rather than
@@ -115,7 +117,8 @@ Point it at a skill:
 - `audit: <path>` grades one skill — a folder with a `SKILL.md`, or a `SKILL.md`
   file directly.
 - `audit: <folder>` grades every skill in a folder of skills.
-- Add `--json` for machine-readable output, `--log-row` for a build-notes row.
+- Add `--json` for machine-readable output, `--quiet` to drop the per-gate fix
+  lines, `--log-row` for a one-line row you can paste into build notes.
 
 Or run the checker directly, without the skill:
 
@@ -134,15 +137,17 @@ Every gate returns one of three signals, and the run exits with a matching code:
   no check, a countable constraint with no verification, a soft-only scope exit,
   or context the file does not contain.
 
-    exit 0  PASS     every gate passed
     exit 2  REVIEW   no failures, but a gate needs a human ruling or a deeper pass
     exit 1  FAIL     at least one gate failed — fix the -> items and re-run
     exit 3  ERROR    nothing gradable at that path
+    exit 0  PASS     every gate passed — defined, and never returned
 
 A clean run tops out at `REVIEW`, not a green `PASS` — because one gate (does the
 skill survive a cold run?) cannot be settled without actually running the skill
-in a fresh context. That is honest, not a defect. A `REVIEW` with no `FAIL`s is
-the normal, good result.
+in a fresh context. Gate 6 has no `PASS` branch at all, which is why `exit 0` is
+listed last and marked: it is part of the contract and no invocation produces it.
+That is honest, not a defect. A `REVIEW` with no `FAIL`s is the normal, good
+result, and `exit 1` is the code worth scripting against.
 
 ## What it does not do
 

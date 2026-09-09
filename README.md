@@ -1,8 +1,8 @@
 # skill-audit
 
-Points at a Claude skill and grades it against a published seven-gate quality
-floor. Reports gate by gate, with one concrete fix per miss, and exits with a
-code you can script against.
+Points at a Claude skill and grades it against a seven-gate quality floor —
+published in full further down this page. Reports gate by gate, with one
+concrete fix per miss, and exits with a code you can script against.
 
 Free, MIT, no dependencies. If you can run `python3 --version`, you can run this.
 
@@ -23,7 +23,7 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
-  [R] References resolve         PASS   All 1 bundled path(s) resolve.
+  [R] References resolve         PASS   All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS   A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS   A deterministic entry (prefix or unambiguous condition) is present.
   [3] Enforced hard-fails        PASS   Hard-fails are present and the skill ships a script (skill_audit.py).
@@ -133,7 +133,8 @@ render where it once crashed.
 
 - `audit: <path>` — grade one skill (a folder with a `SKILL.md`, or a `SKILL.md`).
 - `audit: <folder>` — grade every skill in a folder of skills.
-- `--json` for machine-readable output, `--log-row` for a build-notes row.
+- `--json` for machine-readable output, `--quiet` to drop the per-gate fix
+  lines, `--log-row` for a one-line row you can paste into build notes.
 
 Or run the checker directly, without the skill:
 
@@ -141,11 +142,16 @@ Or run the checker directly, without the skill:
 
 ## Exit codes
 
-    exit 0   PASS     every gate passed
-    exit 2   REVIEW   no failures, but a gate needs a human ruling
+    exit 2   REVIEW   no failures, but a gate needs a human ruling.
+                     This is the clean result — see below
     exit 1   FAIL     a gate failed, or a bundled file is missing — fix the
                      -> items and re-run
     exit 3   ERROR    nothing gradable at that path
+    exit 0   PASS     every gate passed. No run of this checker returns it:
+                     gate 6 has no PASS branch, so 2 is the ceiling
+
+`exit 0` is documented because it is defined in the code, not because you will
+see it. Script against `1` — that is the one that means something went wrong.
 
 ## Worked example
 

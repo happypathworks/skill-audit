@@ -37,5 +37,6 @@ positive on gate 2 and a false positive on gate 5 are different bugs.
 **Operating system and terminal**
 
 Name the OS and the terminal you ran in. Output encoding is a real bug class
-here — the report uses `→` and `—`, and a console on a legacy code page has
-broken the run before.
+here — the report prints an em dash (`—`) in its header line, and a console on a
+legacy code page has broken the run before. (The fix lines print ASCII `->`; an
+earlier build used `→` there and that is the bug this field exists to catch.)

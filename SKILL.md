@@ -39,7 +39,8 @@ command, not a topic.
 - `audit: <path>` — grade one skill (a directory with a SKILL.md, or a SKILL.md
   file).
 - `audit: <folder>` — grade every skill in a folder of skills.
-- Append `--json` for machine-readable output, `--log-row` for a build-notes row.
+- Append `--json` for machine-readable output, `--quiet` to drop the per-gate
+  fix lines, `--log-row` for a one-line row you can paste into build notes.
 
 ## How to run it
 
@@ -48,6 +49,16 @@ Run the bundled checker and build your answer from its output:
 ```
 python3 skill_audit.py <path>
 ```
+
+**Resolve `skill_audit.py` from this file, not from the working directory.** It
+ships beside this `SKILL.md`, and that folder is where the command above has to
+run — prefix the script with the folder's path if you are anywhere else. The
+working directory is the user's project, not the skill folder, on every surface
+except a shell opened inside the skill itself, so the bare command above fails
+with "can't open file" wherever that prefix is left off. On Claude Code the
+folder is usually `~/.claude/skills/skill-audit/` or
+`<project>/.claude/skills/skill-audit/`; elsewhere it is wherever the skill was
+unpacked. Never guess it — read it off this file's own location.
 
 If `python3` is not on `PATH` — the usual case on Windows — run the same command
 with `python`. Nothing else about the invocation changes.
@@ -70,8 +81,9 @@ preflight.
 ## Hard-fails (enforced by skill_audit.py)
 
 - **No verdict the check did not produce.** The response is written around
-  `skill_audit.py`'s real exit code (`0` PASS / `2` REVIEW / `1` FAIL). If the
-  script did not run, refuse to grade — do not free-hand a review.
+  `skill_audit.py`'s real exit code (`2` REVIEW / `1` FAIL — `0` PASS is
+  defined and unreachable, see below). If the script did not run, refuse to
+  grade — do not free-hand a review.
 - **No grading a non-skill.** If the path has no SKILL.md, the script exits `3`;
   report that and stop, rather than inventing a critique.
 - **No promoting a REVIEW to PASS from prose.** A gate the lint marks REVIEW
@@ -85,7 +97,7 @@ sentence.
 
 It grades Claude Agent Skills: a SKILL.md, optionally with sibling scripts. It
 diagnoses and points; it does **not** rewrite your skill — that is a separate
-pass (skill-creator's job). 
+pass (skill-creator's job).
 
 - If pointed at a loose prompt or a code repository with no SKILL.md: refuse,
   say it is not a gradable skill, and stop.

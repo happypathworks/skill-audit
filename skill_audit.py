@@ -25,11 +25,13 @@ USAGE
     --log-row       emit a markdown row for a build-notes gate log
 
 EXIT CODES
-    0   PASS    every gate passed. Note: Gate 6 (cold handoff) cannot be
-                settled by a static lint, so a clean run tops out at REVIEW
-                unless every other gate passes AND Gate 6 is waived. In
-                practice a lint result is a REVIEW at best — that is honest,
-                not a defect. Only a cold-run ablation can raise it to PASS.
+    0   PASS    every gate passed. **No run of this checker returns it.**
+                Gate 6 (cold handoff) has no PASS branch — it returns REVIEW
+                or FAIL, because only a cold-run ablation can settle it — so
+                the best a static lint can reach is 2. The code stays defined
+                rather than deleted: it is what a caller reports once Gate 6
+                has been settled outside this script. Treat 2, not 0, as the
+                clean result. That is honest, not a defect.
     2   REVIEW  no failures, but at least one gate needs a human ruling or a
                 deeper pass. This is the normal result for a decent skill.
     1   FAIL    at least one gate failed on a high-precision anti-pattern: an
@@ -711,10 +713,21 @@ def main():
     if args.log_row:
         print("--- gate log row(s) ---")
         for (sk, findings, verdict, code) in results:
-            fails = "/".join(str(f["gate"]) for f in findings if f["status"] == "FAIL") or "-"
-            revs = "/".join(str(f["gate"]) for f in findings if f["status"] == "REVIEW") or "-"
-            print("| %s | %s | %s | FAIL:%s REVIEW:%s | human sign-off required |"
-                  % (date.today().isoformat(), sk["name"], verdict, fails, revs))
+            # Counts first, gate numbers named as gate numbers. The earlier
+            # format read "FAIL:4 REVIEW:1/2/3" — gate identifiers that a
+            # reader takes for counts, three lines under a summary line that
+            # really is counts. Two shapes for one fact is one too many.
+            fails = [str(f["gate"]) for f in findings if f["status"] == "FAIL"]
+            revs = [str(f["gate"]) for f in findings if f["status"] == "REVIEW"]
+            npass = sum(1 for f in findings if f["status"] == "PASS")
+            note = "%d FAIL / %d REVIEW / %d PASS" % (len(fails), len(revs), npass)
+            if fails:
+                note += "; FAIL at gate %s" % ", ".join(fails)
+            if revs:
+                note += "; REVIEW at gate %s" % ", ".join(revs)
+            note += ". Static lint; each REVIEW gate needs a human ruling or a cold run."
+            print("| %s | %s | %s | %s |"
+                  % (date.today().isoformat(), sk["name"], verdict, note))
 
     # worst verdict across all skills drives the exit code: any FAIL -> 1,
     # else any REVIEW -> 2, else 0.
