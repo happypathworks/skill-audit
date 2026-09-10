@@ -8,17 +8,29 @@ no arguments: clone the repo, run this, get a verdict.
 
     examples/before/release-notes   must exit 1 (FAIL)   — Gate 4 is a real
                                     anti-pattern and must stay detected.
-    examples/after/release-notes    must exit 2 (REVIEW) — the repaired skill
-                                    must NOT trip a false-positive FAIL.
+    examples/after/release-notes    must exit 0 (PASS)   — the repaired skill
+                                    must NOT trip a false-positive FAIL, and
+                                    every gate the lint can decide is clean.
     examples/refs/broken            must exit 1 (FAIL)   — the reference
                                     preflight must still catch a bundled path
                                     that is not there, while leaving the
                                     workspace paths beside it alone.
-    examples/refs/intact            must exit 2 (REVIEW) — the same skill with
+    examples/refs/intact            must exit 0 (PASS)   — the same skill with
                                     the path repaired must come back clean.
 
 The second assertion is the one that matters. A lint that fails good input
 loses a stranger's trust on first contact, and there is no second contact.
+
+Both clean fixtures returned 2 (REVIEW) until the NOT CHECKABLE state landed.
+The gates they were being charged for — cold handoff, and a bundled-path check
+with no bundled paths — were ones the lint never decided, and a verdict is not
+allowed to rest on those. Nothing about the fixtures changed; what changed is
+that the checker stopped counting its own blind spots against them.
+
+Every run must also print the "Not graded" line under its verdict. It is the
+report saying what no gate covers — whether the skill works in a fresh session
+— and it changes no exit code, so an exit-code test alone would never notice
+it had gone.
 
     exit 0   both fixtures returned their expected code
     exit 1   at least one did not — the checker regressed
@@ -43,9 +55,9 @@ CHECKER = os.path.join(ROOT, "skill_audit.py")
 # and a check that silently never fires is worse than no check.
 CASES = [
     ("examples/before/release-notes", 1, "FAIL", None),
-    ("examples/after/release-notes", 2, "REVIEW", None),
+    ("examples/after/release-notes", 0, "PASS", None),
     ("examples/refs/broken", 1, "FAIL", "FAIL"),
-    ("examples/refs/intact", 2, "REVIEW", "PASS"),
+    ("examples/refs/intact", 0, "PASS", "PASS"),
 ]
 
 
@@ -73,8 +85,14 @@ def main():
         )
         got = proc.returncode
         ref_line = next((l for l in proc.stdout.splitlines() if "[R]" in l), "")
-        ref_got = next((s for s in ("FAIL", "REVIEW", "PASS") if s in ref_line), None)
-        bad = got != expected or (ref_status is not None and ref_got != ref_status)
+        # NOT CHECKABLE first: it is the only multi-word status, and a parser
+        # that cannot name it reports None, which reads as "the preflight line
+        # was missing" — a different bug from the one that would be happening.
+        ref_got = next((s for s in ("NOT CHECKABLE", "FAIL", "REVIEW", "PASS")
+                        if s in ref_line), None)
+        not_graded = any(l.startswith("Not graded:") for l in proc.stdout.splitlines())
+        bad = got != expected or (ref_status is not None and ref_got != ref_status) \
+            or not not_graded
 
         if not bad:
             extra = "" if ref_status is None else ", preflight %s" % ref_got
@@ -84,15 +102,17 @@ def main():
             if got != expected:
                 print("  FAIL  %-32s exit %d, expected %d (%s)"
                       % (rel, got, expected, label))
-            else:
+            elif ref_status is not None and ref_got != ref_status:
                 print("  FAIL  %-32s preflight %s, expected %s"
                       % (rel, ref_got, ref_status))
+            else:
+                print("  FAIL  %-32s no \"Not graded\" line under the verdict" % rel)
             for line in proc.stdout.splitlines():
                 print("        | %s" % line)
 
     print("")
     if failures:
-        print("test_fixtures: %d of %d fixtures returned the wrong exit code."
+        print("test_fixtures: %d of %d fixtures did not grade as expected."
               % (failures, len(CASES)))
         return 1
     print("test_fixtures: %d/%d ok." % (len(CASES), len(CASES)))

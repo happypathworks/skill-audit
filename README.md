@@ -23,27 +23,34 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
-  [R] References resolve         PASS   All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
-  [1] Names the gap              PASS   A gap/failure-mode statement is present.
-  [2] Deterministic entry        PASS   A deterministic entry (prefix or unambiguous condition) is present.
-  [3] Enforced hard-fails        PASS   Hard-fails are present and the skill ships a script (skill_audit.py).
-  [4] Verify before voice        PASS   A hard constraint is present and a verification step is described.
-  [5] Loud failure, named exit   PASS   Scope boundaries name an explicit exit (if X, refuse and do Y).
-  [6] Survives cold handoff      REVIEW Cold-handoff survival can't be settled by a static lint.
-        -> Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result.
-  [7] Deciding example           PASS   A worked example is present and shows a catch, not just the happy path.
+  [R] References resolve         PASS          All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
+  [1] Names the gap              PASS          A gap/failure-mode statement is present.
+  [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`audit:`).
+  [3] Enforced hard-fails        PASS          Hard-fails are present and the skill ships a script (skill_audit.py).
+  [4] Verify before voice        PASS          A hard constraint is present and a verification step is described.
+  [5] Loud failure, named exit   PASS          Scope boundaries name an explicit exit (if X, refuse and do Y).
+  [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
+  [7] Deciding example           PASS          A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 1   PASS 7
+FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 8
 
-VERDICT: REVIEW
-No detectable failures. The REVIEW gates need a human ruling or a deeper pass (a static lint can't settle them). This is the normal result for a decent skill.
-
+VERDICT: PASS
+Every gate came back clean.
+Not graded: whether the skill works in a fresh session. The lint reads files; only a run shows what a model does with them.
+        -> Open a session where your own project instructions do not load, install the skill from its archive, give it a real task that starts with `audit:`, and check what it does against what the skill promises.
 ```
 
-`REVIEW` with no `FAIL`s is the target, not a consolation prize. Gate 6 cannot
-be settled by a static lint — proving a skill survives a cold handoff means
-running it in a clean context, which is something a person does. A tool that
-printed a green `PASS` there would be lying about what it checked.
+Read the third column before the verdict. A gate comes back `PASS`, `REVIEW`,
+`FAIL` — or `NOT CHECKABLE`, which is the tool declining to hold an opinion
+when a skill gives a gate nothing it can test. Those rows do not count against
+the verdict, and their count is printed beside it.
+
+Then read the line under the verdict, because it is the one no gate covers.
+Whether a skill works in a fresh session — somewhere its author's context does
+not reach — takes running it, and a lint only reads files. So the report says
+so under every verdict, with the step to take, instead of printing a green row
+it did not earn. `PASS` means *nothing found and nothing owed*, not *the skill
+works*: eight clean rows here, and a run still to do.
 
 ## The preflight
 
@@ -82,12 +89,19 @@ Pass `--no-refs` to skip it.
 | | Gate | A failure looks like |
 |---|---|---|
 | 1 | Names the gap | The skill never says what goes wrong without it. It reads as a nice-to-have because nothing establishes the need. |
-| 2 | Deterministic entry | The trigger is a pile of synonyms instead of a prefix or an unambiguous condition. It fires when it shouldn't and stays quiet when it should. |
+| 2 | Deterministic entry | Entry is undecided: a pile of synonyms, or a description that says what the skill is for and never what it is not for. It fires when it shouldn't and stays quiet when it should. A prefix decides entry; so does a description bounded on both sides — this gate asks whether entry is *decided*, not whether it is prefixed. |
 | 3 | Enforced hard-fails | Rules stated as prose with nothing checking them. A rule with no check behind it is a preference. |
 | 4 | Verify before voice | A countable constraint — a character limit, a spec, a format — that nothing counts. The output is written around an estimate. |
 | 5 | Loud failure, named exit | Scope language with a soft exit. "Try to stay in scope" instead of "if X, refuse and do Y". |
-| 6 | Survives cold handoff | The skill references context it does not contain. In a fresh session it quietly does something else. |
+| 6 | No prior-chat references | The skill leans on a conversation it does not contain — "as we discussed", "like last time". A fresh session never had that conversation, so it quietly does something else. |
 | 7 | Deciding example | The only example is the happy path, so it demonstrates nothing that could have gone wrong. |
+
+Gate 6 is the part of a bigger question that a file can show. The bigger
+question — does the skill work in a fresh session at all? — is not a gate,
+because answering it means running the skill, and the report says so under
+every verdict. The worked example in `examples/` carries a line that shows why:
+"Match the tone used in the last few releases" leans on context the file does
+not carry, in words no phrase list would catch. A run catches it.
 
 ## Install
 
@@ -142,16 +156,18 @@ Or run the checker directly, without the skill:
 
 ## Exit codes
 
-    exit 2   REVIEW   no failures, but a gate needs a human ruling.
-                     This is the clean result — see below
+    exit 0   PASS     every gate the lint can decide came back clean, and
+                     none needs a human ruling. Undecided gates are listed
+                     as NOT CHECKABLE and do not block this
+    exit 2   REVIEW   no failures, but a gate needs a human ruling
     exit 1   FAIL     a gate failed, or a bundled file is missing — fix the
                      -> items and re-run
     exit 3   ERROR    nothing gradable at that path
-    exit 0   PASS     every gate passed. No run of this checker returns it:
-                     gate 6 has no PASS branch, so 2 is the ceiling
 
-`exit 0` is documented because it is defined in the code, not because you will
-see it. Script against `1` — that is the one that means something went wrong.
+Script against `1` — that is the one that means something went wrong. `0` means
+the lint is out of objections, which is not the same as the skill being proven:
+read the `NOT CHECKABLE` rows, and the *Not graded* line under the verdict,
+before you close the question.
 
 ## Worked example
 
@@ -160,9 +176,9 @@ after each gate was answered — with the real output of both runs and a
 gate-by-gate account of what changed and why. Start there.
 
     python3 skill_audit.py examples/before/release-notes   # exit 1, FAIL
-    python3 skill_audit.py examples/after/release-notes    # exit 2, REVIEW
+    python3 skill_audit.py examples/after/release-notes    # exit 0, PASS
     python3 skill_audit.py examples/refs/broken            # exit 1, missing file
-    python3 skill_audit.py examples/refs/intact            # exit 2, refs resolve
+    python3 skill_audit.py examples/refs/intact            # exit 0, refs resolve
 
 ## Tests
 

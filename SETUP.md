@@ -126,28 +126,36 @@ Or run the checker directly, without the skill:
 
 ## Reading the result
 
-Every gate returns one of three signals, and the run exits with a matching code:
+Every gate returns one of four signals, and the run exits with a code built from
+the ones it decided:
 
 - `PASS` — the structural signal is present and positive.
-- `REVIEW` — the element is there but a machine can't judge its quality, or the
-  gate needs a cold run to settle. Needs your eyes. A description-based trigger
-  and an undetected example land here, not on `FAIL` — they are the norm, and a
-  regex can't settle them.
+- `REVIEW` — the element is there but a machine can't judge its quality. Needs
+  your eyes. A description-based trigger and a happy-path example land here, not
+  on `FAIL` — they are the norm, and a regex can't settle them.
 - `FAIL` — a high-precision anti-pattern: an explicitly-declared hard-fail with
   no check, a countable constraint with no verification, a soft-only scope exit,
-  or context the file does not contain.
+  or phrasing that leans on a conversation the file does not contain.
+- `NOT CHECKABLE` — the lint declined to decide. Either the skill had no premise
+  for the gate to test (no countable constraint, no bundled paths), or the
+  detector's vocabulary is narrow enough that a boundary phrased unusually and
+  no boundary at all look the same. These rows do not count against the verdict.
 
+    exit 0  PASS     every decided gate came back clean, and none needs a ruling
     exit 2  REVIEW   no failures, but a gate needs a human ruling or a deeper pass
     exit 1  FAIL     at least one gate failed — fix the -> items and re-run
     exit 3  ERROR    nothing gradable at that path
-    exit 0  PASS     every gate passed — defined, and never returned
 
-A clean run tops out at `REVIEW`, not a green `PASS` — because one gate (does the
-skill survive a cold run?) cannot be settled without actually running the skill
-in a fresh context. Gate 6 has no `PASS` branch at all, which is why `exit 0` is
-listed last and marked: it is part of the contract and no invocation produces it.
-That is honest, not a defect. A `REVIEW` with no `FAIL`s is the normal, good
-result, and `exit 1` is the code worth scripting against.
+`exit 1` is the code worth scripting against. `exit 0` does not mean the skill is
+proven — it means the lint has no objections left, with however many gates it
+never decided printed right beside the verdict.
+
+Under every verdict there is one more line, and it is not a gate: *Not graded:
+whether the skill works in a fresh session.* Reading a file cannot establish
+that — it takes running the skill somewhere its author's context does not
+reach — so the tool says so, and prints the step to take, naming the skill's
+own trigger when it found one. The count next to `VERDICT:` and the line under
+it are the parts to read before you close the question.
 
 ## What it does not do
 

@@ -5,13 +5,31 @@ skill_audit.py — mechanical lint of a Claude skill against the seven-gate Floo
 This is the lint, not the verdict. It is decisive only where a machine can be
 precise: it FAILs on an explicitly-declared hard-fail with no check behind it,
 a countable constraint asserted without verification, a scope boundary that
-says "try to stay in scope" instead of naming an exit, and context the file
-does not contain. Everything softer — whether the trigger is a prefix or a
-description, whether an example is present and genuinely *deciding*, whether
-the one-sentence gap is *true*, whether the skill survives a cold run — comes
-back REVIEW for a human, because presence is not quality and a regex cannot
-settle it. This tool reports what it can see honestly and never pretends to
-judge more than it can.
+says "try to stay in scope" instead of naming an exit, and phrasing that leans
+on a conversation the file does not contain. Everything softer — whether the
+trigger is a prefix or a description, whether an example is present and
+genuinely *deciding*, whether the one-sentence gap is *true* — comes back
+REVIEW for a human, because presence is not quality and a regex cannot settle
+it. This tool reports what it can see honestly and never pretends to judge
+more than it can.
+
+A gate can also come back NOT CHECKABLE, which is the lint declining to hold
+an opinion — the skill had no premise for the gate to test (no countable
+constraint, no bundled paths), or the detector's vocabulary is narrow enough
+that absence and unfamiliar phrasing look identical (scope boundary, worked
+example). Those rows carry a -> line naming what a human would have to do, and
+they do not count against the verdict. A verdict built on rows the tool never
+decided is the thing this state exists to stop.
+
+NOT GRADED
+    One question sits outside every gate: does the skill work in a fresh
+    session? Answering it means running the skill where its author's context
+    does not reach, and a lint only reads files. Gate 6 used to carry that
+    question as its name, so it could FAIL on the one tell a file shows --
+    phrasing that leans on an earlier chat -- and never PASS: a row that could
+    fail and never pass, which is a to-do wearing a gate's badge. Gate 6 now
+    grades what it reads, and can PASS. The fresh-session question is printed
+    under every verdict as "Not graded", with the steps to run it.
 
 USAGE
     python skill_audit.py <path> [<path> ...] [options]
@@ -25,13 +43,14 @@ USAGE
     --log-row       emit a markdown row for a build-notes gate log
 
 EXIT CODES
-    0   PASS    every gate passed. **No run of this checker returns it.**
-                Gate 6 (cold handoff) has no PASS branch — it returns REVIEW
-                or FAIL, because only a cold-run ablation can settle it — so
-                the best a static lint can reach is 2. The code stays defined
-                rather than deleted: it is what a caller reports once Gate 6
-                has been settled outside this script. Treat 2, not 0, as the
-                clean result. That is honest, not a defect.
+    0   PASS    every gate the lint can decide came back clean, and none needs
+                a human ruling. Gates 4, 5, 7 and the preflight can each land
+                on a premise they cannot test — those rows report NOT CHECKABLE
+                and are excluded from the verdict — and whether the skill works
+                in a fresh session is not graded at all. So 0 means "nothing
+                found and nothing owed", not "everything proven". Read the NOT
+                CHECKABLE rows and the Not graded line before treating a 0 as
+                the end of the question.
     2   REVIEW  no failures, but at least one gate needs a human ruling or a
                 deeper pass. This is the normal result for a decent skill.
     1   FAIL    at least one gate failed on a high-precision anti-pattern: an
@@ -100,11 +119,21 @@ GATES = [
     (3, "Enforced hard-fails"),
     (4, "Verify before voice"),
     (5, "Loud failure, named exit"),
-    (6, "Survives cold handoff"),
+    (6, "No prior-chat references"),
     (7, "Deciding example"),
 ]
 
-STATUSES = ("FAIL", "REVIEW", "PASS")  # worst-first, for verdict ordering
+# NOT CHECKABLE is the third per-gate state, and it exists because REVIEW was
+# doing three unrelated jobs at once: "I checked and found a problem", "I
+# checked and found nothing wrong", and "I could not check". Only the first is
+# a finding about the skill. Rows that mean the third now say so and do not
+# gate the verdict — a gate the lint cannot decide is not evidence against the
+# work, and printing it as REVIEW made every report read the same. It is not a
+# softer PASS: it is the lint declining to hold an opinion, and the -> line
+# under it names what a human would have to do to settle it.
+NOTCHECK = "NOT CHECKABLE"
+STATUSES = ("FAIL", "REVIEW", NOTCHECK, "PASS")  # worst-first, for verdict ordering
+BADGE_W = max(len(s) for s in STATUSES)
 
 SCRIPT_EXT = {".py", ".sh", ".js", ".ts", ".rb", ".pl", ".ps1", ".bat"}
 
@@ -223,17 +252,67 @@ GAP_MARKERS = [
 ]
 
 # a deterministic entry: a prefix/condition, not a keyword pile
-PREFIX_TOKEN = r"`[A-Za-z][\w-]*[:/]`"
-ENTRY_MARKERS = [
-    PREFIX_TOKEN,
+#
+# A backticked token ending in ':' or '/' is the SHAPE of a trigger prefix
+# (`audit:`, `pl/`) and also the shape of a directory (`scripts/`), a Python
+# keyword (`try:`) and a URI scheme (`data:`). Shape alone cannot separate
+# them: measured against 31 known-good skills the bare pattern matched 56
+# times, 52 of them folders and the other 4 syntax, for zero true positives
+# and 15 false PASSes. So the token is necessary and never sufficient — the
+# prose within TRIGGER_WINDOW characters has to say the token is the trigger.
+# This is the same discipline GAP_MARKERS uses to keep "otherwise ... wrong"
+# inside one sentence; here it is what stops a folder from being a trigger.
+PREFIX_TOKEN = r"`[A-Za-z][\w-]{0,23}[:/]`"
+TRIGGER_WINDOW = 60
+# Phrases about HOW THE SKILL IS ENTERED, not merely about the same subject.
+# A bare topical word cannot be here: `\bcommand\b` next to `commands/` in a
+# document about commands matched every time, which is the false positive in a
+# different coat. Each entry has to be a claim that something fires.
+TRIGGER_CONTEXT = [
+    r"\btrigger", r"\bprefix\b", r"\bfires? on\b",
+    # "begins with" is a trigger claim only when it is a MESSAGE that begins
+    # with the token. Bare, it matched "start with the reusable resources
+    # identified above: `scripts/`" — ordinary English, not an entry rule.
+    r"\b(?:message|prompt|request|input|line)s?\b[^.\n]{0,24}\b(?:begin|start|open)(?:s|ning)?\s+with\b",
+    r"\binvoked? (?:with|by|as)\b", r"\bwhen the user types\b",
+    r"\btreat\b[^.\n]{0,20}\bas (?:a )?(?:command|prefix|trigger)\b",
+    r"\bfollowed by\b",
+]
+
+# Phrases that declare a deterministic entry on their own, no token needed.
+ENTRY_PHRASES = [
     r"\bprimary trigger is\b", r"\bhard trigger\b", r"\bdeterministic (?:entry|trigger)\b",
     r"\bany message beginning with\b", r"\bmessages? (?:that )?(?:begin|start)(?:s|ning)? with\b",
-    r"\bstarts? with\b[^.\n]{0,30}`", r"\bwhen the user types\b",
+    # NOT a bare "starts with `...`": that matched plugin-structure's path rule
+    # "Must start with `./`", which is a constraint on a config value and has
+    # nothing to do with how the skill is entered. The subject has to be the
+    # thing the user sends.
+    r"\b(?:message|prompt|request|input|line)s?\b[^.\n]{0,24}\b(?:begin|start|open)(?:s|ning)?\s+with\b[^.\n]{0,30}`",
+    r"\bwhen the user types\b",
     r"\btreat (?:any message|the prefix)\b",
 ]
+ENTRY_MARKERS = ENTRY_PHRASES  # kept for callers that want the phrases alone
+
 KEYWORD_TRIGGER_MARKERS = [
-    r"\buse when\b", r"\buse this (?:skill )?when\b", r"\btrigger(?:s)? (?:on|include)\b",
-    r"\bkeywords?\b", r"\btriggers include\b",
+    # "Use when/for/whenever ...", with or without an intervening object:
+    # "Use when the user asks", "Use this skill for .docx", "Use it whenever".
+    r"\buse\s+(?:this\s+|the\s+|it\s+)?(?:skill\s+)?(?:when(?:ever)?|for)\b",
+    r"\btrigger(?:s)? (?:on|include)\b", r"\btriggers include\b",
+    r"\bkeywords?\b", r"\bwhen the user\b", r"\bapplies? (?:when|to)\b",
+]
+
+# The other way entry can be decided: a description that bounds it on both
+# sides. "Use for .docx. Do NOT use for PDFs" fires semantically and is still
+# unambiguous — it names the adjacent requests it must not take. Requiring a
+# prefix instead would ask half the ecosystem to adopt a convention that would
+# make it worse: nobody should have to type `docx:` to get a Word file handled.
+# The gate asks whether entry is DECIDED, not whether it is PREFIXED.
+ENTRY_NEGATIVE_MARKERS = [
+    r"\b(?:do not|don't|never)\s+(?:use|trigger|invoke|apply)\b",
+    r"\bnot for\b", r"\bwhen (?:not to|to not)\b", r"\bskip (?:this|it)\b",
+    r"\bnot a (?:substitute|replacement)\b",
+    r"\binstead of\b[^.\n]{0,60}\buse\b",
+    r"\buse\b[^.\n]{0,40}\binstead\b",
 ]
 
 # hard-fail claims. An explicit token is decisive on its own; imperative rule
@@ -330,14 +409,39 @@ def gate1(sk):
         "State in one sentence what the base model gets wrong or does inconsistently without this skill."
 
 
+def _declared_prefix(text):
+    """A backticked prefix token the surrounding prose calls a trigger.
+
+    The token alone is worthless (see PREFIX_TOKEN). Returns the match only
+    when TRIGGER_CONTEXT appears within TRIGGER_WINDOW characters either side,
+    which is what separates `audit:` in "primary trigger is `audit:`" from
+    `scripts/` in "executable code lives in `scripts/`".
+    """
+    for m in re.finditer(PREFIX_TOKEN, text):
+        lo = max(0, m.start() - TRIGGER_WINDOW)
+        hi = min(len(text), m.end() + TRIGGER_WINDOW)
+        if has(TRIGGER_CONTEXT, text[lo:hi]):
+            return m
+    return None
+
+
 def gate2(sk):
     text = sk["description"] + "\n" + sk["body"]
-    if has(ENTRY_MARKERS, text):
-        return "PASS", "A deterministic entry (prefix or unambiguous condition) is present.", ""
+    prefix = _declared_prefix(text)
+    if prefix or has(ENTRY_PHRASES, text):
+        detail = (" (%s)" % prefix.group(0)) if prefix else ""
+        return "PASS", "A deterministic entry (prefix or unambiguous condition) is present%s." % detail, ""
+    # Entry decided in prose rather than in punctuation: the description says
+    # both when to fire and when not to. Unambiguous without a prefix, and the
+    # only shape available to a skill that has to fire semantically.
+    if has(KEYWORD_TRIGGER_MARKERS, sk["description"]) \
+            and has(ENTRY_NEGATIVE_MARKERS, sk["description"]):
+        return "PASS", "Entry is bounded on both sides: the description says when to fire and when not to.", ""
     if has(KEYWORD_TRIGGER_MARKERS, text):
-        return "REVIEW", "Entry is description/keyword-based — the ecosystem norm, but not a deterministic trigger.", \
-            "This fires semantically and can mis-trigger on adjacent requests. A hard trigger (a prefix like `foo:` " \
-            "or an unambiguous condition) makes entry predictable; keyword lists can supplement it. Optional, not required. (Gate 2)"
+        return "REVIEW", "Entry is description/keyword-based — the ecosystem norm, but the boundary is unstated.", \
+            "This fires semantically, and nothing says which adjacent requests it must decline. Either add a hard " \
+            "trigger (a prefix like `foo:`) or bound the description on both sides — what it is for, and what it is " \
+            "not for. Naming the near-miss cases is what makes semantic entry predictable. (Gate 2)"
     return "REVIEW", "No trigger mechanism detected at all.", \
         "Declare how the skill fires — a deterministic entry (a prefix or unambiguous condition) is the most predictable."
 
@@ -372,7 +476,11 @@ def gate4(sk):
     constraints = has(CONSTRAINT_MARKERS, text)
     verify = has(VERIFY_MARKERS, text)
     if not constraints:
-        return "PASS", "No countable/spec'd constraint detected; gate not applicable.", \
+        # This was a PASS for the first year of the tool's life, and against a
+        # 31-skill corpus of best-in-class work it was 29 of the 31 — a green
+        # row that meant "nothing here to check". A gate with no premise has
+        # not been satisfied; it has not been asked.
+        return NOTCHECK, "No countable/spec'd constraint detected; gate not applicable.", \
             "If the skill does have a hard constraint (a count, a spec), make sure it's verified, not asserted."
     if verify:
         return "PASS", "A hard constraint is present and a verification step is described.", ""
@@ -407,17 +515,33 @@ def gate5(sk):
     if scope:
         return "REVIEW", "A scope boundary is present but the lint found no named exit.", \
             "Confirm the boundary ends in an action — 'if X, refuse and do Y' — rather than trailing off. (Gate 5)"
-    return "REVIEW", "No scope boundary detected.", \
+    # Absence here is not a verdict. SCOPE_MARKERS is a short list of literal
+    # phrases, and a boundary written in any other idiom reads as absence — so
+    # the lint cannot tell "this skill declares no boundary" from "this skill
+    # declares one I don't know the words for". Measured against 31 known-good
+    # skills the whole list matched one string, inside a table row that
+    # _strip_table_rows correctly drops. Do not widen this list before the
+    # scope-and-soft FAIL branch above gains a proximity constraint: those two
+    # detectors are far enough apart in a long file to pair unrelated
+    # sentences, and widening the first arms the second.
+    return NOTCHECK, "No scope boundary detected.", \
         "Confirm the skill can't be pulled out of scope, or add a boundary with a named exit."
 
 
 def gate6(sk):
     leak = has(CONTEXT_LEAK_MARKERS, sk["body"])
     if leak:
-        return "FAIL", "The skill refers to context it does not contain (%r)." % leak.group(0), \
-            "A cold reader won't have that. Move the procedure into the skill so it survives a fresh thread. (Gate 6)"
-    return "REVIEW", "Cold-handoff survival can't be settled by a static lint.", \
-        "Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result."
+        return "FAIL", "The skill leans on a conversation it does not contain (%r)." % leak.group(0), \
+            "A fresh session never had that conversation. Put what it refers to into the skill itself. (Gate 6)"
+    # This gate used to be named for the question it cannot answer --
+    # "survives cold handoff" -- so it had a FAIL branch and no PASS branch,
+    # and printed NOT CHECKABLE on every skill that did not trip the list
+    # above. It now grades what it reads. Its premise is always present --
+    # the phrasing it looks for would be in the body, and the body is always
+    # there to scan -- so a clean scan is a decided PASS, not a vacuous one.
+    # Whether the skill works in a fresh session is still no gate's to
+    # decide: print_report names it under every verdict (NOT_GRADED).
+    return "PASS", "No phrasing that leans on an earlier chat (\"as we discussed\", \"like last time\").", ""
 
 
 def gate7(sk):
@@ -429,7 +553,9 @@ def gate7(sk):
     if example and not catch:
         return "REVIEW", "An example is present but reads like a happy path.", \
             "Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)"
-    return "REVIEW", "No example detected by the lint — it may present usage in a form the lint can't read (e.g. code recipes).", \
+    # The message already conceded the lint may simply have failed to read the
+    # file; reporting that concession as REVIEW charged the skill for it.
+    return NOTCHECK, "No example detected by the lint — it may present usage in a form the lint can't read (e.g. code recipes).", \
         "Confirm by eye that at least one example shows a catch, not the happy path — the obvious case succeeding is decoration. (Gate 7)"
 
 
@@ -612,7 +738,9 @@ def check_refs(sk):
                 "(Preflight)",
                 missing)
     if not claims:
-        return ("PASS", "No bundled-file references to verify.%s" % tail,
+        # Same class as gate 4's missing premise: there was nothing of this
+        # kind to resolve, which is not the same as having resolved it.
+        return (NOTCHECK, "No bundled-file references to verify.%s" % tail,
                 "This checks only paths the skill claims to ship. Runtime and workspace paths "
                 "are out of its reach — a cold run is what settles those.", [])
     return ("PASS", "All %d bundled path(s) resolve.%s" % (len(claims), tail), "", [])
@@ -637,6 +765,13 @@ def evaluate(sk, refs=True):
 
 
 def verdict_of(findings):
+    """Worst decided status wins. NOT CHECKABLE is not a status the verdict sees.
+
+    A row the lint declined to decide is deliberately absent from both tests
+    below, so a skill whose only open rows are undecidable ones reaches PASS.
+    That is what makes exit 0 reachable at all: before the third state existed,
+    gate 6 returned REVIEW on every input and no run could return 0.
+    """
     statuses = {f["status"] for f in findings}
     if "FAIL" in statuses:
         return "FAIL", 1
@@ -647,6 +782,27 @@ def verdict_of(findings):
 
 # ---------------------------------------------------------------- report -----
 
+# The one question no gate answers. A lint reads files; whether a skill works
+# in a fresh session takes a run. It is printed under every verdict, FAIL
+# included, so that no verdict -- least of all a PASS -- is read as that run.
+NOT_GRADED = ("Not graded: whether the skill works in a fresh session. "
+              "The lint reads files; only a run shows what a model does with them.")
+
+
+def cold_run_step(sk):
+    """The run the lint cannot do, written for this skill.
+
+    Names the skill's own trigger when gate 2 found a declared prefix, so the
+    step is one a reader can take as written rather than a method to adapt.
+    """
+    prefix = _declared_prefix(sk["description"] + "\n" + sk["body"])
+    task = ("a real task that starts with %s" % prefix.group(0)) if prefix \
+        else "a real request it should fire on"
+    return ("Open a session where your own project instructions do not load, install the "
+            "skill from its archive, give it %s, and check what it does against what the "
+            "skill promises." % task)
+
+
 def print_report(sk, findings, verdict, quiet=False):
     print("skill_audit — %s" % sk["name"])
     print("           %s" % sk["path"])
@@ -656,20 +812,35 @@ def print_report(sk, findings, verdict, quiet=False):
     counts = {s: 0 for s in STATUSES}
     for f in findings:
         counts[f["status"]] += 1
-        badge = f["status"].ljust(6)
+        badge = f["status"].ljust(BADGE_W)
         print("  [%s] %-26s %s %s" % (f["gate"], f["title"], badge, f["message"]))
         if not quiet and f["fix"] and f["status"] != "PASS":
             print("        -> %s" % f["fix"])
     print()
-    print("FAIL %d   REVIEW %d   PASS %d" % (counts["FAIL"], counts["REVIEW"], counts["PASS"]))
+    print("FAIL %d   REVIEW %d   NOT CHECKABLE %d   PASS %d"
+          % (counts["FAIL"], counts["REVIEW"], counts[NOTCHECK], counts["PASS"]))
     print("\nVERDICT: %s" % verdict)
+    nc = counts[NOTCHECK]
     if verdict == "FAIL":
         print("At least one gate failed on a detectable anti-pattern. Fix the -> items and re-run.")
     elif verdict == "REVIEW":
         print("No detectable failures. The REVIEW gates need a human ruling or a deeper pass "
               "(a static lint can't settle them). This is the normal result for a decent skill.")
+    elif nc:
+        # The honest PASS. It says what it covers and, in the same breath, how
+        # many rows it does not — because a verdict that hides its own blind
+        # spots is the failure mode this whole state was added to prevent.
+        print("Every gate the lint can decide came back clean. %s above — read %s."
+              % ("One gate it cannot decide is marked NOT CHECKABLE" if nc == 1
+                 else "%d gates it cannot decide are marked NOT CHECKABLE" % nc,
+                 "its -> line" if nc == 1 else "their -> lines"))
     else:
-        print("All gates passed the lint. Still worth a cold-run ablation to confirm Gate 6.")
+        # Reachable since gate 6 gained a PASS branch: every row decided and
+        # clean. The line below still says what no row covers.
+        print("Every gate came back clean.")
+    print(NOT_GRADED)
+    if not quiet:
+        print("        -> %s" % cold_run_step(sk))
     print()
 
 
@@ -702,6 +873,7 @@ def main():
             "broken_refs": [b for f in findings for b in f.get("broken", [])],
             "gates": [{"gate": f["gate"], "title": f["title"], "status": f["status"],
                        "message": f["message"], "fix": f["fix"]} for f in findings],
+            "not_graded": {"what": NOT_GRADED, "how": cold_run_step(sk)},
         } for (sk, findings, verdict, code) in results]
         print(json.dumps(out if len(out) > 1 else out[0], indent=2))
     else:
@@ -719,13 +891,19 @@ def main():
             # really is counts. Two shapes for one fact is one too many.
             fails = [str(f["gate"]) for f in findings if f["status"] == "FAIL"]
             revs = [str(f["gate"]) for f in findings if f["status"] == "REVIEW"]
+            ncs = [str(f["gate"]) for f in findings if f["status"] == NOTCHECK]
             npass = sum(1 for f in findings if f["status"] == "PASS")
-            note = "%d FAIL / %d REVIEW / %d PASS" % (len(fails), len(revs), npass)
+            note = "%d FAIL / %d REVIEW / %d NOT CHECKABLE / %d PASS" \
+                % (len(fails), len(revs), len(ncs), npass)
             if fails:
                 note += "; FAIL at gate %s" % ", ".join(fails)
             if revs:
                 note += "; REVIEW at gate %s" % ", ".join(revs)
-            note += ". Static lint; each REVIEW gate needs a human ruling or a cold run."
+            if ncs:
+                note += "; NOT CHECKABLE at gate %s" % ", ".join(ncs)
+            note += (". Static lint; each REVIEW gate needs a human ruling, each "
+                     "NOT CHECKABLE gate is one the lint declined to decide, and "
+                     "whether the skill works in a fresh session is not graded.")
             print("| %s | %s | %s | %s |"
                   % (date.today().isoformat(), sk["name"], verdict, note))
 

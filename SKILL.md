@@ -64,8 +64,9 @@ If `python3` is not on `PATH` — the usual case on Windows — run the same com
 with `python`. Nothing else about the invocation changes.
 
 Read its exit code and its gate table. Present the verdict, the per-gate lines,
-and the `->` fixes. Do not add gates it did not report, and do not soften a FAIL
-into a suggestion — the point of the tool is that the verdict is mechanical.
+the `->` fixes, and the *Not graded* line under the verdict with its step. Do
+not add gates it did not report, and do not soften a FAIL into a suggestion —
+the point of the tool is that the verdict is mechanical.
 
 The table opens with `[R] References resolve` — a preflight, not a gate. It
 checks that every path the skill *claims to ship* exists, and reports how many
@@ -81,14 +82,19 @@ preflight.
 ## Hard-fails (enforced by skill_audit.py)
 
 - **No verdict the check did not produce.** The response is written around
-  `skill_audit.py`'s real exit code (`2` REVIEW / `1` FAIL — `0` PASS is
-  defined and unreachable, see below). If the script did not run, refuse to
-  grade — do not free-hand a review.
+  `skill_audit.py`'s real exit code (`0` PASS / `2` REVIEW / `1` FAIL). If the
+  script did not run, refuse to grade — do not free-hand a review.
 - **No grading a non-skill.** If the path has no SKILL.md, the script exits `3`;
   report that and stop, rather than inventing a critique.
 - **No promoting a REVIEW to PASS from prose.** A gate the lint marks REVIEW
   stays REVIEW. Only a deeper pass (a cold-run ablation) can raise it, and this
   skill does not perform one.
+- **No reporting a PASS verdict without what it leaves out.** `exit 0` means
+  every gate the lint *decided* came back clean. Two things are printed beside
+  it and belong in the summary sentence too: the `NOT CHECKABLE` count, and the
+  *Not graded* line — whether the skill works in a fresh session, which no lint
+  grades. A PASS reported as "the skill works", or as "all gates passed" when
+  some were never decided, is a claim the run did not make.
 
 Every hard-fail above is backed by the exit code the script returns, not by this
 sentence.
@@ -107,12 +113,17 @@ pass (skill-creator's job).
 ## What it cannot do (so it doesn't pretend to)
 
 The lint settles the mechanical gates — trigger shape, prose-vs-checked
-hard-fails, soft-vs-named scope exits, example-vs-catch. It **cannot** tell you
-whether your gap statement is true, whether your example is genuinely deciding,
-or whether the skill survives a cold run. Those come back REVIEW on purpose. A
-clean lint is a REVIEW at best, never a green PASS — because presence is not
-quality, and only running the skill cold can prove the last gate. That honesty
-is the tool.
+hard-fails, soft-vs-named scope exits, example-vs-catch, phrasing that leans on
+an earlier chat. It **cannot** tell you whether your gap statement is true,
+whether your example is genuinely deciding, or whether the skill works in a
+fresh session. The ones it can see but not judge come back REVIEW; the ones a
+skill gives it nothing to test come back NOT CHECKABLE and are excluded from the
+verdict, because charging a skill for the lint's blind spots made every report
+read the same. The fresh-session question is not a gate at all: answering it
+takes running the skill, so the report names it under every verdict as *Not
+graded*, with the step to take. A clean run is a PASS with its undecided gates
+counted next to it and that run named under it — never a green light that
+pretends to be the run. That honesty is the tool.
 
 ## Worked example (a catch, not a happy path)
 

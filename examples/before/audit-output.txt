@@ -1,25 +1,27 @@
 skill_audit — release-notes
            examples/before/release-notes/SKILL.md
 
-  [R] References resolve         PASS   No bundled-file references to verify.
-  [1] Names the gap              REVIEW No gap statement detected.
+  [R] References resolve         NOT CHECKABLE No bundled-file references to verify.
+        -> This checks only paths the skill claims to ship. Runtime and workspace paths are out of its reach — a cold run is what settles those.
+  [1] Names the gap              REVIEW        No gap statement detected.
         -> State in one sentence what the base model gets wrong or does inconsistently without this skill.
-  [2] Deterministic entry        REVIEW No trigger mechanism detected at all.
-        -> Declare how the skill fires — a deterministic entry (a prefix or unambiguous condition) is the most predictable.
-  [3] Enforced hard-fails        REVIEW Rule-like imperatives are present but no explicit hard-fail is declared or enforced.
+  [2] Deterministic entry        REVIEW        Entry is description/keyword-based — the ecosystem norm, but the boundary is unstated.
+        -> This fires semantically, and nothing says which adjacent requests it must decline. Either add a hard trigger (a prefix like `foo:`) or bound the description on both sides — what it is for, and what it is not for. Naming the near-miss cases is what makes semantic entry predictable. (Gate 2)
+  [3] Enforced hard-fails        REVIEW        Rule-like imperatives are present but no explicit hard-fail is declared or enforced.
         -> If any of these must always hold, name it as a hard-fail and back it with a check rather than leaving it as prose.
-  [4] Verify before voice        FAIL   A countable/spec'd constraint is present but no verification step was detected.
+  [4] Verify before voice        FAIL          A countable/spec'd constraint is present but no verification step was detected.
         -> Write the output around a verified result — run the check first, then speak. (Gate 4)
-  [5] Loud failure, named exit   REVIEW No scope boundary detected.
+  [5] Loud failure, named exit   NOT CHECKABLE No scope boundary detected.
         -> Confirm the skill can't be pulled out of scope, or add a boundary with a named exit.
-  [6] Survives cold handoff      REVIEW Cold-handoff survival can't be settled by a static lint.
-        -> Prove it by running the skill in a clean context on a fixture (an ablation) and comparing the result.
-  [7] Deciding example           REVIEW An example is present but reads like a happy path.
+  [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
+  [7] Deciding example           REVIEW        An example is present but reads like a happy path.
         -> Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)
 
-FAIL 1   REVIEW 6   PASS 1
+FAIL 1   REVIEW 4   NOT CHECKABLE 2   PASS 1
 
 VERDICT: FAIL
 At least one gate failed on a detectable anti-pattern. Fix the -> items and re-run.
+Not graded: whether the skill works in a fresh session. The lint reads files; only a run shows what a model does with them.
+        -> Open a session where your own project instructions do not load, install the skill from its archive, give it a real request it should fire on, and check what it does against what the skill promises.
 
 before exit: 1
