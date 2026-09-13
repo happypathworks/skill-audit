@@ -68,10 +68,23 @@ the `->` fixes, and the *Not graded* line under the verdict with its step. Do
 not add gates it did not report, and do not soften a FAIL into a suggestion —
 the point of the tool is that the verdict is mechanical.
 
-The table opens with `[R] References resolve` — a preflight, not a gate. It
-checks that every path the skill *claims to ship* exists, and reports how many
-workspace paths it skipped as out of reach. Report it as the script gives it:
-an `[R]` FAIL is a missing file, not a design flaw, and the fix is to ship the
+The table opens with two preflights, not gates. Neither grades design; each
+checks something that stops the skill being a skill, and they are reported as
+the script gives them.
+
+`[D] Upload-safe description` checks the description against the two platform
+limits that break silently. Over 1024 characters it is truncated on ingest and
+the tail is lost with no warning. Anything shaped like an XML tag is refused
+outright — claude.ai answers the upload with *"SKILL.md description cannot
+contain XML tags"*, and the usual cause is a placeholder such as `recheck
+<path>`, not markup. Claude Code accepts the same file, so nothing local raises
+it and the refusal arrives on someone else's install. A `[D]` FAIL is not a
+design flaw and must not be softened into one: say what the span or the
+overage is, and that the fix is in the frontmatter.
+
+`[R] References resolve` checks that every path the skill *claims to ship*
+exists, and reports how many workspace paths it skipped as out of reach. An
+`[R]` FAIL is a missing file, not a design flaw, and the fix is to ship the
 file or fix the path. An `[R]` REVIEW is weaker on purpose — the path is absent
 but only ever named in passing, so it is either a stale reference or prose about
 a file the reader would write, and the script says so rather than choosing. Do

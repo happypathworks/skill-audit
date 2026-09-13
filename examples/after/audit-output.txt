@@ -2,6 +2,7 @@ skill_audit — release-notes
            examples/after/release-notes/SKILL.md
            scripts: check_notes.py
 
+  [D] Upload-safe description    PASS          description is 566 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (4 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`rel:`).
@@ -11,7 +12,7 @@ skill_audit — release-notes
   [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
   [7] Deciding example           PASS          A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 8
+FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 9
 
 VERDICT: PASS
 Every gate came back clean.

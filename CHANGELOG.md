@@ -3,6 +3,43 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v1.2.0 — 2026-09-13
+
+    Added   — [D] Upload-safe description, a second preflight beside [R]. It
+              grades the `description:` field against the two platform limits
+              that break silently, and FAILs on either. Over 1024 characters
+              the field is truncated on ingest: the tail is dropped, nothing
+              warns, and a trigger sentence or a boundary that lived in the
+              tail simply stops being there. Anything shaped like an XML tag
+              is refused outright — claude.ai answers the upload with "SKILL.md
+              description cannot contain XML tags" and installs nothing. FAIL
+              rather than REVIEW, because a skill the platform will not take as
+              written is not a skill with a design problem. It is a skill that
+              does not arrive.
+    Fixed   — the checker graded a skill PASS that then failed at upload. Met
+              2026-09-12 on a real description reading `brand: recheck <path>`
+              — a placeholder, not markup. Claude Code accepts that file, so
+              nothing local raised it: the skill was written, installed,
+              audited clean at exit 0, and turned down by the web app. There
+              was no description-length check either. That is the class of
+              break this tool exists to catch, on the surface most of its
+              readers use.
+    Added   — two fixtures. examples/desc/refused carries the refused span and
+              nothing else wrong; examples/desc/toolong is 1048 characters
+              with no angle bracket anywhere, so a run against it shows the two
+              rules are independent. Two rules, two fixtures, asserted
+              separately — one fixture carrying both defects could not say
+              which rule had stopped firing. tests/test_fixtures.py now runs
+              six cases and asserts the [D] row on every one of them,
+              including the four that were already there: those supply the
+              PASS path, on real skill files rather than on one written to
+              pass.
+    Changed — every report carries one more row, so a clean run reads PASS 9
+              where it read PASS 8. Anything counting rows needs to know. The
+              four exit codes and their meanings are unchanged, and no skill's
+              verdict moves unless its own description trips one of the two
+              rules.
+
 ## v1.1.0 — 2026-09-10
 
     Added   — NOT CHECKABLE, a fourth per-gate state. A gate reports it when

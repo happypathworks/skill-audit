@@ -26,6 +26,7 @@ survives a cold context.
 skill_audit — release-notes
            examples/before/release-notes/SKILL.md
 
+  [D] Upload-safe description    PASS          description is 302 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         NOT CHECKABLE No bundled-file references to verify.
         -> This checks only paths the skill claims to ship. Runtime and workspace paths are out of its reach — a cold run is what settles those.
   [1] Names the gap              REVIEW        No gap statement detected.
@@ -42,7 +43,7 @@ skill_audit — release-notes
   [7] Deciding example           REVIEW        An example is present but reads like a happy path.
         -> Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)
 
-FAIL 1   REVIEW 4   NOT CHECKABLE 2   PASS 1
+FAIL 1   REVIEW 4   NOT CHECKABLE 2   PASS 2
 
 VERDICT: FAIL
 At least one gate failed on a detectable anti-pattern. Fix the -> items and re-run.
@@ -59,6 +60,7 @@ skill_audit — release-notes
            examples/after/release-notes/SKILL.md
            scripts: check_notes.py
 
+  [D] Upload-safe description    PASS          description is 566 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (4 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`rel:`).
@@ -68,7 +70,7 @@ skill_audit — release-notes
   [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
   [7] Deciding example           PASS          A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 8
+FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 9
 
 VERDICT: PASS
 Every gate came back clean.
@@ -91,7 +93,7 @@ removed here because a reader noticed. In a fresh session it would have been
 noticed by the skill going quietly wrong.
 
 That is why `PASS` here means *the lint is out of objections*, not *the skill is
-proven*. Eight rows decided and clean, and one run left to you.
+proven*. Nine rows decided and clean, and one run left to you.
 
 ---
 

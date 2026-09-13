@@ -23,6 +23,7 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
+  [D] Upload-safe description    PASS          description is 698 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`audit:`).
@@ -32,7 +33,7 @@ skill_audit — skill-audit
   [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
   [7] Deciding example           PASS          A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 8
+FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 9
 
 VERDICT: PASS
 Every gate came back clean.
@@ -50,11 +51,38 @@ Whether a skill works in a fresh session — somewhere its author's context does
 not reach — takes running it, and a lint only reads files. So the report says
 so under every verdict, with the step to take, instead of printing a green row
 it did not earn. `PASS` means *nothing found and nothing owed*, not *the skill
-works*: eight clean rows here, and a run still to do.
+works*: nine clean rows here, and a run still to do.
 
-## The preflight
+## The preflights
 
-Before the gates, one integrity check. `[R] References resolve` verifies that
+Before the gates, two integrity checks. Neither is about quality. Each catches
+something that stops a skill being a skill, which no gate below can see.
+
+### `[D] Upload-safe description`
+
+The description is the one field the platform reads before it reads anything
+else, and two limits on it break silently.
+
+**Past 1024 characters it is truncated on ingest.** The tail is dropped, nothing
+warns, and if the trigger sentence or the boundaries lived in the tail, the skill
+quietly fires on things its author ruled out — while the file on disk still says
+it does not.
+
+**Anything shaped like an XML tag is refused outright.** claude.ai answers the
+upload with *"SKILL.md description cannot contain XML tags"* and installs
+nothing. The cause is almost always a placeholder rather than markup: `recheck
+<path>`. Claude Code accepts the same file, so the skill can be written,
+installed, audited clean and used locally for weeks before the web app turns it
+down — and the refusal names the field, not the span. The server-side rule is
+unpublished, so this matches any `<...>` span.
+
+Both are `FAIL` rather than `REVIEW`, for the same reason: a skill the platform
+will not take as written is not a skill with a design problem. It is a skill
+that does not arrive. The fix is in the frontmatter and nowhere else.
+
+### `[R] References resolve`
+
+Verifies that
 every path the skill *claims to ship* actually exists — a renamed helper, a
 deleted script, a `references/` file that moved. Gate 3 cannot see this: it
 counts a skill "enforced" if any script sits in its directory, which a stale
@@ -179,14 +207,17 @@ gate-by-gate account of what changed and why. Start there.
     python3 skill_audit.py examples/after/release-notes    # exit 0, PASS
     python3 skill_audit.py examples/refs/broken            # exit 1, missing file
     python3 skill_audit.py examples/refs/intact            # exit 0, refs resolve
+    python3 skill_audit.py examples/desc/refused           # exit 1, <path> refused
+    python3 skill_audit.py examples/desc/toolong           # exit 1, over 1024 chars
 
 ## Tests
 
     python3 tests/test_fixtures.py
 
-Asserts both fixtures still return the exit code they are supposed to. The
-second assertion is the one that matters: a lint that fails good input loses a
-stranger's trust on first contact, and there is no second contact.
+Asserts all six fixtures still return the exit code — and the preflight rows —
+they are supposed to. The clean ones are the assertions that matter: a lint that
+fails good input loses a stranger's trust on first contact, and there is no
+second contact.
 
 ## What it does not do
 

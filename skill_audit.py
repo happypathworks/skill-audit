@@ -44,7 +44,7 @@ USAGE
 
 EXIT CODES
     0   PASS    every gate the lint can decide came back clean, and none needs
-                a human ruling. Gates 4, 5, 7 and the preflight can each land
+                a human ruling. Gates 4, 5, 7 and both preflights can each land
                 on a premise they cannot test — those rows report NOT CHECKABLE
                 and are excluded from the verdict — and whether the skill works
                 in a fresh session is not graded at all. So 0 means "nothing
@@ -57,14 +57,37 @@ EXIT CODES
                 explicitly-declared hard-fail with no backing check, a countable
                 constraint with no verification, a scope boundary whose exit is
                 an intention rather than an action, or context the file does not
-                contain -- or the preflight found a file the skill POINTS AT
-                (links, runs, or names with a pointer verb) and does not ship.
-                Fix and re-run.
+                contain -- or a preflight found a description the platform will
+                not take as written, or a file the skill POINTS AT (links, runs,
+                or names with a pointer verb) and does not ship. Fix and re-run.
     3   ERROR   nothing gradable was found at the given path(s).
 
+THE [D] PREFLIGHT
+    Before the Floor, two integrity checks. This is the first, and it grades
+    the one field the platform reads before it reads anything else:
+    `description`. Two limits apply to it. Both are silent, and no gate below
+    can see either.
+
+    1024 characters is the hard limit. Past it the description is truncated on
+    ingest -- the tail is gone and nothing warns. A trigger sentence that lived
+    in the lost tail stops firing, which reads as the model being unreliable
+    and is not that.
+
+    Anything shaped like an XML tag is refused outright. claude.ai answers the
+    upload with "SKILL.md description cannot contain XML tags", and the usual
+    cause is a placeholder rather than markup: `recheck <path>`. Claude Code
+    accepts the same file, so a skill can be written, installed, audited and
+    used locally for weeks before the web app turns it down -- and the refusal,
+    when it comes, names the field and not the span. The server-side rule is
+    unpublished, so this matches any <...> span.
+
+    Both are FAIL rather than REVIEW, for one reason: a skill the platform will
+    not take as written is not a skill with a design problem. It is a skill
+    that does not arrive.
+
 THE [R] PREFLIGHT
-    Before the Floor, one integrity check: every path the skill claims to ship
-    must exist. It runs first because a skill pointing at a file that is not
+    The second integrity check: every path the skill claims to ship must exist.
+    It runs before the Floor because a skill pointing at a file that is not
     there is broken the way a build break is broken, and no gate below can see
     it -- Gate 3 counts a skill "enforced" if ANY script sits in its directory,
     which a renamed or deleted one still satisfies.
@@ -703,6 +726,65 @@ def _bundle_refs(sk):
     return claims, skipped, strong_any
 
 
+# ------------------------------------------------ preflight: description ----
+
+# The hard limit on a skill `description`. Past it the field is truncated when
+# the platform ingests it: the tail is dropped, nothing warns, and a trigger
+# sentence that lived in the tail simply stops firing.
+MAX_DESCRIPTION = 1024
+
+# claude.ai refuses the upload outright when the description holds anything
+# shaped like an XML tag -- "SKILL.md description cannot contain XML tags".
+# The cause is almost always a placeholder (`recheck <path>`) and not markup.
+# Claude Code accepts the same file, so nothing local catches it. The exact
+# server-side rule is unpublished, so this matches any <...> span, which is the
+# rule the build tooling behind this skill enforces on the way into an archive.
+DESCRIPTION_TAG_RE = re.compile(r"<[^<>]*>")
+
+
+def check_description(sk):
+    """Preflight: the platform must accept the description as written.
+
+    An integrity check, not a quality gate. A description the platform refuses
+    or silently truncates is not a design flaw to weigh -- the skill either
+    never installs or installs with half its trigger missing, and every gate
+    below would then be grading a file nobody can run.
+    """
+    desc = sk["description"]
+    if not desc.strip():
+        return (NOTCHECK, "SKILL.md declares no description.",
+                "Nothing here to measure against the platform's limits. A skill needs "
+                "a `description:` to be selected at all, and gates 1 and 2 grade what "
+                "it says. (Preflight)")
+
+    problems, fixes = [], []
+
+    tags = DESCRIPTION_TAG_RE.findall(desc)
+    if tags:
+        shown = ", ".join(repr(t) for t in tags[:4]) + (" ..." if len(tags) > 4 else "")
+        problems.append("holds %s, which claude.ai refuses at upload" % shown)
+        fixes.append(
+            "claude.ai answers the upload with \"SKILL.md description cannot contain "
+            "XML tags\" and installs nothing. Write the placeholder without angle "
+            "brackets -- `recheck PATH`, not `recheck <path>`. Claude Code accepts "
+            "the same file, which is why this is found at upload and not before.")
+
+    if len(desc) > MAX_DESCRIPTION:
+        problems.append("is %d chars, %d over the %d-char limit"
+                        % (len(desc), len(desc) - MAX_DESCRIPTION, MAX_DESCRIPTION))
+        fixes.append(
+            "Past %d characters the description is truncated on ingest and the tail is "
+            "lost with no warning. Cut it to length yourself, so that you choose what "
+            "goes rather than the platform choosing for you." % MAX_DESCRIPTION)
+
+    if problems:
+        return ("FAIL", "description " + " and ".join(problems) + ".",
+                " ".join(fixes) + " (Preflight)")
+
+    return ("PASS", "description is %d of %d chars and holds no XML-tag shape."
+            % (len(desc), MAX_DESCRIPTION), "")
+
+
 def check_refs(sk):
     """Preflight: every path the skill claims to ship must resolve.
 
@@ -753,6 +835,9 @@ CHECKS = {1: gate1, 2: gate2, 3: gate3, 4: gate4, 5: gate5, 6: gate6, 7: gate7}
 
 def evaluate(sk, refs=True):
     findings = []
+    status, msg, fix = check_description(sk)
+    findings.append({"gate": "D", "title": "Upload-safe description",
+                     "status": status, "message": msg, "fix": fix})
     if refs:
         status, msg, fix, broken = check_refs(sk)
         findings.append({"gate": "R", "title": "References resolve", "status": status,

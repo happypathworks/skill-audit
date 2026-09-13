@@ -1,6 +1,7 @@
 skill_audit — release-notes
            examples/before/release-notes/SKILL.md
 
+  [D] Upload-safe description    PASS          description is 302 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         NOT CHECKABLE No bundled-file references to verify.
         -> This checks only paths the skill claims to ship. Runtime and workspace paths are out of its reach — a cold run is what settles those.
   [1] Names the gap              REVIEW        No gap statement detected.
@@ -17,7 +18,7 @@ skill_audit — release-notes
   [7] Deciding example           REVIEW        An example is present but reads like a happy path.
         -> Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)
 
-FAIL 1   REVIEW 4   NOT CHECKABLE 2   PASS 1
+FAIL 1   REVIEW 4   NOT CHECKABLE 2   PASS 2
 
 VERDICT: FAIL
 At least one gate failed on a detectable anti-pattern. Fix the -> items and re-run.
