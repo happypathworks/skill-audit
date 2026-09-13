@@ -212,3 +212,15 @@ Changes to this tool, and the next ones as they ship, go out on the list:
 No cadence promised beyond that — it is a changelog you do not have to poll.
 
 Questions and bug reports: hello@happypath.works
+
+## Independence and AI assistance
+
+Happy Path Works is an independent project. It is **not affiliated with,
+endorsed by, or sponsored by Anthropic**. Claude, Claude Code and Anthropic are
+trademarks of Anthropic PBC, used here only to describe what this tool works
+with. This tool requires your own Claude access; it resells nothing.
+
+This tool and its documentation are developed with AI assistance, and a human
+reviews everything before it ships. That is the same standard the seven gates
+enforce — a claim gets verified before it gets written down — and it applies to
+the people writing them too.
