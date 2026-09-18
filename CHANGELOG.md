@@ -3,6 +3,25 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v1.2.1 — 2026-09-18
+
+    Added   — a statement of what this tool does not grade: a skill's
+              installer. What a setup script writes outside the skill
+              folder, what it downloads, and what an uninstall leaves behind
+              are out of scope, in SETUP.md and README.md alike. The checker
+              opens one file, SKILL.md, and looks for every other file by
+              name only, so a skill can pass every gate and still come with
+              an install that writes far outside its own folder.
+    Added   — SETUP.md states this tool's own footprint: the install
+              writes one folder and nothing outside it, nothing is fetched,
+              uninstalling is deleting the folder, and running the checker
+              writes nothing.
+    Fixed   — SETUP.md's folder listing had fallen behind the folder. It
+              now lists all six fixtures, and the .claude-plugin/, .github/
+              and .gitignore entries it had left out.
+    Changed — nothing in skill_audit.py or SKILL.md. Every verdict and
+              every exit code is what v1.2.0 returned.
+
 ## v1.2.0 — 2026-09-13
 
     Added   — [D] Upload-safe description, a second preflight beside [R]. It

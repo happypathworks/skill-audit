@@ -15,15 +15,21 @@ plainly where a human still has to look.
       LICENSE           MIT
       CHANGELOG.md      dated, versioned releases
       examples/         the worked example — the same skill before and after,
-                        with the real output of both runs
-      tests/            test_fixtures.py — asserts both fixtures still return
-                        the exit code they are supposed to
+                        with the real output of both runs — plus four
+                        single-defect fixtures under refs/ and desc/
+      tests/            test_fixtures.py — asserts all six fixtures still
+                        return the exit code they are supposed to
+      .claude-plugin/   plugin.json, the manifest a marketplace listing reads
+      .github/          the repository's CI workflow and issue templates
+      .gitignore        the repository's ignore list
 
 Keep `SKILL.md` and `skill_audit.py` together in the same folder. The skill runs
 the script from beside itself.
 
-Everything else is documentation and fixtures. The skill loader reads `SKILL.md`;
-the rest is inert and can be deleted if you want the folder bare. The fixtures
+Everything else is documentation, fixtures and repository furniture. The skill
+loader reads `SKILL.md`; the rest is inert and can be deleted if you want the
+folder bare — `.claude-plugin/` changes how a project install loads, covered
+under Compatibility below. The fixtures
 under `examples/` are demonstration inputs, not skills — their frontmatter says
 so, and they are nested two levels down where the loader does not look.
 
@@ -36,6 +42,16 @@ its own folder:
 - Claude Code (one project): `<project>/.claude/skills/skill-audit/`
 
 No dependencies to install. If you can run `python3 --version`, you can run this.
+
+**What the install writes: that one folder, and nothing outside it.** No global
+package, no shell profile, no change to your `CLAUDE.md` or settings, nothing
+fetched from anywhere else, no sign-in. Uninstalling is deleting the folder.
+Running the checker writes nothing at all — it reads the skill you point it at
+and prints to the terminal.
+
+Installed with `git clone` (see `README.md`), the repository root *is* this
+folder, so everything listed above — `.github/` and `tests/` included — lands in
+your skills directory. None of it loads; delete what you do not want.
 
 ## Compatibility
 
@@ -163,3 +179,9 @@ It does not rewrite your skill — it diagnoses and points; fixing is a separate
 pass. It grades Claude Agent Skills (a `SKILL.md`, optionally with sibling
 scripts), not loose prompts or code repositories. Pointed at something that
 isn't a skill, it says so and stops rather than inventing a critique.
+
+It grades the skill, not its installer. What a setup script writes outside the
+skill folder, what it downloads, and what an uninstall leaves behind are out of
+scope: the checker opens one file, `SKILL.md`, and looks for every other file
+by name only. A skill can pass every gate and still come with an install that
+writes far outside its own folder. Read that install before you run it.

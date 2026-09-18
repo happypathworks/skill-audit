@@ -226,6 +226,12 @@ pass. It grades Claude Agent Skills (a `SKILL.md`, optionally with sibling
 scripts), not loose prompts or code repositories. Pointed at something that
 isn't a skill, it says so and stops rather than inventing a critique.
 
+It grades the skill, not its installer. What a setup script writes outside the
+skill folder, what it downloads, and what an uninstall leaves behind are out of
+scope: the checker opens one file, `SKILL.md`, and looks for every other file
+by name only. A skill can pass every gate and still come with an install that
+writes far outside its own folder. Read that install before you run it.
+
 It is a lint. It catches the structural tells a machine can catch, and it says
 plainly where a human still has to look.
 
