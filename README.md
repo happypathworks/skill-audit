@@ -107,8 +107,12 @@ indistinguishable on the page and calling one broken would be inventing
 evidence.
 
 Measured against a known-good corpus of 32 skills — every skill in Anthropic's
-official plugin marketplace, plus a local one — the whole lint returns zero
-`FAIL`s.
+official plugin marketplace, plus this one — this preflight returns zero
+`FAIL`s. The lint as a whole returns one, and it is not a reference problem: a
+template skill in the marketplace carries `<name>` in its description, which
+`[D]` catches because claude.ai refuses that description at upload. Measured
+2026-09-19; the marketplace changes on Anthropic's release schedule, so the
+figure is dated rather than maintained.
 
 Pass `--no-refs` to skip it.
 
