@@ -1,6 +1,6 @@
 {
   "name": "skill-audit",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Lints a Claude skill against a seven-gate quality floor and reports it gate by gate, with a specific fix for each miss.",
   "author": {
     "name": "Happy Path Works",

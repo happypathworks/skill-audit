@@ -8,11 +8,13 @@ Free, MIT, no dependencies. If you can run `python3 --version`, you can run this
 
 ## The gap it closes
 
-Ask a model "is this skill any good?" and it writes a confident, agreeable
-paragraph that checks nothing. The read that does not survive being done from
-memory is the mechanical one: whether the trigger is a real prefix or a pile of
-synonyms, whether each hard-fail has a check behind it or is just a sentence,
-whether the one example shows a catch or the happy path.
+Ask a model "is this skill any good?" and it will critique the prose, often
+well, and differently every time. What it misses is the rule nothing enforces:
+it asks what a length limit means, never whether any step counts it. The read
+that a review from memory skips is the mechanical one: whether the trigger is
+a real prefix or a pile of synonyms, whether each hard-fail has a check behind
+it or is just a sentence, whether the one example shows a catch or the happy
+path.
 
 This runs that read every time, the same way, and reports what it actually found.
 
@@ -23,7 +25,7 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
-  [D] Upload-safe description    PASS          description is 698 of 1024 chars and holds no XML-tag shape.
+  [D] Upload-safe description    PASS          description is 652 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`audit:`).

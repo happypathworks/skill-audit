@@ -2,14 +2,14 @@
 name: skill-audit
 description: >-
   Lints a Claude skill against a seven-gate quality Floor and reports it gate
-  by gate, with a specific fix for each miss. Primary trigger is any message
-  beginning with "audit:" — treat this prefix as a command. `audit:` followed
+  by gate, with a specific fix for each miss. Any message beginning with
+  "audit:" invokes this skill — treat this prefix as a command. `audit:` followed
   by a path grades one skill; `audit:` pointed at a folder grades each skill
   inside it.
   Without this skill, asked whether a skill is any good, the base model
-  free-associates a plausible-sounding review and never mechanically checks the
-  structural tells — a keyword-only trigger, hard-fails asserted in prose, a
-  happy-path example — that separate a product from a prompt. This skill runs
+  writes a thoughtful review, but a different one each time, and none of
+  them is a check: it will question what a length limit means, never that
+  no step ever counts it. This skill runs
   skill_audit.py and writes the verdict around the exit code the check actually
   returns.
 license: MIT
@@ -24,12 +24,14 @@ it says plainly where a human still has to look.
 
 ## The gap it closes
 
-Ask a bare model "is this skill any good?" and it will write you a confident,
-agreeable paragraph that checks nothing. The thing that does not survive being
-done from memory is the *mechanical* read — counting whether the trigger is a
-real prefix or a pile of keywords, whether each hard-fail has a check behind it
-or is just a sentence, whether the one example shows a catch or the happy path.
-This skill runs that read every time, the same way, and reports it.
+Ask a bare model "is this skill any good?" and it will critique the prose, often
+well, and differently every time. In one test it caught a missing script three
+times out of three, and missed an unenforced character limit three times out of
+three: it asked what the limit means, never whether any step counts it. What a
+review from memory skips is the *mechanical* read — counting whether the trigger
+is a real prefix or a pile of keywords, whether each hard-fail has a check
+behind it or is just a sentence, whether the one example shows a catch or the
+happy path. This skill runs that read every time, the same way, and reports it.
 
 ## Trigger
 
@@ -158,7 +160,8 @@ A skill called `meeting-summarizer` looks fine at a glance: a description, a
 Verdict: **FAIL**, exit `1`, with the exact fix under each line. The skill that
 read as competent is a prompt wearing a product's clothes — three declared rules
 and not one of them enforced — and the tool says so in the time it takes to run,
-instead of the paragraph of agreeable nothing a bare model would have written.
+where a bare model would have questioned what the rules mean and never checked
+that anything enforces them.
 
 (Its keyword-only trigger and its happy-path example come back **REVIEW**, not
 FAIL: a description-based trigger is the ecosystem norm, and a lint can't

@@ -3,8 +3,8 @@ name: release-notes
 description: >-
   EXAMPLE FIXTURE — the repaired "after" half of the skill-audit worked
   example. It is a demonstration input, not a skill meant to be installed.
-  Turns a changelog into release notes. PRIMARY TRIGGER is any message
-  beginning with `rel:` — treat that prefix as a command. `rel:` followed by a
+  Turns a changelog into release notes. Any message beginning with `rel:`
+  invokes this skill — treat that prefix as a command. `rel:` followed by a
   path reads that changelog; bare `rel:` reads the newest unreleased section.
   Without this skill the base model writes release notes from memory of the
   diff, silently invents version numbers that look plausible, and blows the

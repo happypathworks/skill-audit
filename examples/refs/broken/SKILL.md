@@ -1,8 +1,8 @@
 ---
 name: report-packer
 description: >-
-  Packs a directory of report fragments into a single archive. Primary trigger
-  is any message beginning with "pack:" — treat this prefix as a command.
+  Packs a directory of report fragments into a single archive. Any message
+  beginning with "pack:" invokes this skill — treat this prefix as a command.
   Without this skill the base model hand-rolls a zip call each time and
   silently drops the manifest, producing an archive that looks right and
   cannot be unpacked.

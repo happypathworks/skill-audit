@@ -3,6 +3,33 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v1.2.2 — 2026-09-22
+
+    Changed — the gap statement, in the description, in "The gap it
+              closes" in SKILL.md and README.md, and at the close of the
+              worked example, re-measured on Claude Opus 5.5 (2026-09-22).
+              Asked whether a skill is any good, a bare model now writes a
+              thoughtful review; what it still misses is the rule nothing
+              enforces. It questions what a length limit means, never
+              whether any step counts it. The description is 652
+              characters, down from 698.
+    Changed — README: the reference-preflight corpus figure is
+              re-measured and dated (2026-09-19). The preflight returns zero
+              FAILs across 32 skills; the lint as a whole returns one, a
+              marketplace template whose description claude.ai refuses. This
+              reached the public repository on 2026-09-19 and the download
+              with this release.
+    Changed — wording only, where a phrase the release checks block had
+              been hidden by a line break: the trigger sentence in the
+              description, the same sentence in three example skills
+              (examples/after/release-notes, examples/refs/broken and
+              examples/refs/intact), and one sentence in README's "The gap
+              it closes". The trigger itself is unchanged: a message
+              beginning with `audit:`.
+    Changed — nothing in skill_audit.py, the fixture regression test or
+              its expectations. Every verdict and every exit code is what
+              v1.2.1 returned.
+
 ## v1.2.1 — 2026-09-18
 
     Added   — a statement of what this tool does not grade: a skill's
