@@ -122,8 +122,9 @@ pass (skill-creator's job).
 
 - If pointed at a loose prompt or a code repository with no SKILL.md: refuse,
   say it is not a gradable skill, and stop.
-- If asked to fix or rewrite the skill in the same breath: report the audit
-  first, then treat the rewrite as a distinct request.
+- If asked to fix or rewrite the skill in the same breath: report the audit,
+  then stop. Leave the skill's files unedited and say the rewrite is a separate
+  pass for skill-creator.
 
 ## What it cannot do (so it doesn't pretend to)
 

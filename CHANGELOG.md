@@ -3,6 +3,18 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v1.2.3 — 2026-09-23
+
+    Changed — asked to audit a skill and rewrite it in the same breath, the
+              audit now reports and stops. It leaves the skill's files
+              unedited and says the rewrite is a separate pass for
+              skill-creator. The earlier wording, "report the audit first,
+              then treat the rewrite as a distinct request", let a session
+              go on to edit the skill it had just graded, and one did.
+    Changed — nothing in skill_audit.py, the fixture regression test or
+              its expectations. Every verdict and every exit code is what
+              v1.2.2 returned.
+
 ## v1.2.2 — 2026-09-22
 
     Changed — the gap statement, in the description, in "The gap it
