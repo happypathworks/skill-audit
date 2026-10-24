@@ -17,8 +17,9 @@ plainly where a human still has to look.
       examples/         the worked example — the same skill before and after,
                         with the real output of both runs — plus four
                         single-defect fixtures under refs/ and desc/
-      tests/            test_fixtures.py — asserts all six fixtures still
-                        return the exit code they are supposed to
+      tests/            test_fixtures.py — asserts the six fixtures and its
+                        own edge cases still return the exit code they
+                        are supposed to
       .claude-plugin/   plugin.json, the manifest a marketplace listing reads
       .github/          the repository's CI workflow and issue templates
       .gitignore        the repository's ignore list
@@ -35,13 +36,28 @@ so, and they are nested two levels down where the loader does not look.
 
 ## Install
 
+Claude Code reads skills from a folder on your machine. The claude.ai web app,
+Cowork and the desktop app's chat read them from your claude.ai account. The
+second route is under "Without a terminal" below.
+
+The download is two files, one per route:
+
+- `skill-audit.zip` — this whole folder: the skill, the worked example, the
+  tests and the plugin manifest. For Claude Code.
+- `skill-audit-upload.zip` — `SKILL.md`, `skill_audit.py`, `SETUP.md`,
+  `README.md`, `LICENSE` and `CHANGELOG.md`, and nothing else. For your
+  claude.ai account, which refuses a zip that holds a plugin manifest or more
+  than one `SKILL.md`; the full zip has both.
+
+### Claude Code
+
 Drop the whole `skill-audit` folder into your skills directory, each skill in
 its own folder:
 
 - Claude Code (personal): `~/.claude/skills/skill-audit/`
 - Claude Code (one project): `<project>/.claude/skills/skill-audit/`
 
-No dependencies to install. If you can run `python3 --version`, you can run this.
+No dependencies to install. If you have Python 3.8 or newer, you can run this.
 
 **What the install writes: that one folder, and nothing outside it.** No global
 package, no shell profile, no change to your `CLAUDE.md` or settings, nothing
@@ -51,7 +67,39 @@ and prints to the terminal.
 
 Installed with `git clone` (see `README.md`), the repository root *is* this
 folder, so everything listed above — `.github/` and `tests/` included — lands in
-your skills directory. None of it loads; delete what you do not want.
+your skills directory. Only `.claude-plugin/` changes how it loads (see
+Compatibility); delete what you do not want.
+
+### Without a terminal: claude.ai, Cowork, the desktop app
+
+Nothing to unpack. A step marked **Not verified when 2.0.0 was written** had not
+been walked through with this skill on that surface when this release was cut.
+
+**The claude.ai web app.**
+
+1. Open `claude.ai/customize/skills/new/upload`, choose `skill-audit-upload.zip`
+   as the **Skill file**, the download as it came, and select **Upload**. A
+   skill is switched on as soon as it is uploaded. Choose `skill-audit.zip`
+   instead and the upload is refused: "A skill cannot contain a plugin
+   manifest" and "Zip must contain exactly one SKILL.md file".
+2. Your skills are listed at `claude.ai/customize/skills/yours`, and each one's
+   page has its on/off switch.
+3. In a new chat, attach the `SKILL.md` you want graded and start the message
+   with `audit:`, for example `audit: the SKILL.md I attached`. Claude runs
+   `skill_audit.py` in the chat for you.
+
+**Not verified when 2.0.0 was written:** what happens when your account already
+has a skill named skill-audit; whether a code-execution setting has to be
+switched on before Claude can run the checker, and what that setting is
+called; and how Claude finds a file attached to the message.
+
+**Cowork.** Skills on your claude.ai account reach Cowork, so the upload above
+is expected to be the whole install. **Not verified when 2.0.0 was written.**
+
+**The desktop app.** Its chat uses the skills on your claude.ai account, so the
+upload above is expected to be the install there. Its Code tab runs Claude
+Code, so the Claude Code steps above are expected to apply as written. **Not
+verified when 2.0.0 was written,** either route.
 
 ## Compatibility
 
@@ -80,25 +128,22 @@ and when one lands, not to describe a door you can currently walk through.
 asserted — `.github/workflows/acceptance.yml` runs the fixture tests and the
 self-audit on 3.8 and 3.12 on every push, so a change that quietly needs a newer
 interpreter fails CI. The grammar parses as far back as 3.6; 3.8 is the floor
-because that is the oldest version actually exercised. There is no runtime
-version guard, so an interpreter below the floor fails at whatever it fails at
-rather than saying so.
+because that is the oldest version actually exercised. An interpreter below
+the floor is refused by name, with exit 4 and no verdict.
 
 On most Linux and macOS systems the interpreter is `python3`; on Windows a bare
 `python` is the usual spelling and `python3` may not exist. The skill's command
 line uses `python3` and says to substitute `python` when that is missing.
 
 **Windows consoles that are not UTF-8.** The report prints an em dash (`—`) in its
-header line, and `—` does not exist in the legacy `cp1252` code page. A literal `→`
-in a print path once killed the run before any verdict was emitted, with no symptom
-on Linux at all; that arrow is gone — the fix line now reads `->` — but the em dash
-remains and the same failure class applies to it.
-The checker now reconfigures its own output stream with `errors="replace"` rather
+header line, and `—` does not exist in the legacy `cp437` and `cp850` code pages.
+The checker reconfigures its own output stream with `errors="replace"` rather
 than assuming a modern terminal: those characters degrade to replacement marks
-and the run completes with the right exit code. This is a standing CI leg, not a
-one-off check — `windows-legacy-console` forces `PYTHONIOENCODING=cp1252` on
-`windows-latest` and fails the build if a traceback appears or no verdict is
-printed.
+and the run completes with the right exit code. The CI leg
+`windows-legacy-console` forces `PYTHONIOENCODING=cp1252` on `windows-latest`
+and fails the build on a traceback or a missing verdict. cp1252 does have the
+em dash, so that leg guards the characters it lacks, such as `→`; cp437 and
+cp850 are not run in CI.
 
 **The bundled plugin manifest changes project-scope installs.** The repository
 ships `.claude-plugin/plugin.json` so the same tree can be listed in the
@@ -115,7 +160,8 @@ checker and the skill do not read it.
 **Every Claude surface.** Agent Skills run on Claude Code, in the claude.ai web
 app, in Cowork and in the desktop app, and this one is deliberately plain enough
 to run on all of them: a `SKILL.md`, one Python file, the standard library, and
-no build step. Nothing here needs a shell, a package manager or a repository.
+no build step. Nothing here needs a package manager or a repository, only
+Python 3 to run the checker.
 
 **Install location differs by surface, and the two do not sync.** A folder you
 drop into `~/.claude/skills/` or `.claude/skills/` is local to Claude Code on
@@ -160,9 +206,15 @@ the ones it decided:
     exit 0  PASS     every decided gate came back clean, and none needs a ruling
     exit 2  REVIEW   no failures, but a gate needs a human ruling or a deeper pass
     exit 1  FAIL     at least one gate failed — fix the -> items and re-run
-    exit 3  ERROR    nothing gradable at that path
+    exit 3  REFUSED  an input it will not grade: nothing gradable at a path, or
+                     a SKILL.md it cannot read as written (a byte-order mark,
+                     UTF-16, not UTF-8, empty, frontmatter missing or never
+                     closed). The reason and its fix print on stderr
+    exit 4  USAGE    the command line was wrong (an unknown flag, or no
+                     path), or Python is older than 3.8
 
-`exit 1` is the code worth scripting against. `exit 0` does not mean the skill is
+`3` and `4` are never verdicts. Across several skills, any FAIL exits `1`, then
+any refused input `3`, then any REVIEW `2`. `exit 1` is the code worth scripting against. `exit 0` does not mean the skill is
 proven — it means the lint has no objections left, with however many gates it
 never decided printed right beside the verdict.
 

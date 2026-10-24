@@ -32,10 +32,9 @@ jobs:
           echo "self-audit exit $code — acceptable (0 PASS or 2 REVIEW)."
 
   windows-legacy-console:
-    # D48. A literal U+2192 in a print path raised UnicodeEncodeError on a
-    # cp1252 console and killed the run before any verdict was emitted — on
-    # the free lead magnet, on the most common consumer platform, with no
-    # Linux symptom at all. Actions hands us a UTF-8 console, so the legacy
+    # A character outside cp1252 in a print path raises UnicodeEncodeError on
+    # a cp1252 console and kills the run before any verdict is emitted, with
+    # no Linux symptom at all. Actions hands us a UTF-8 console, so the legacy
     # code page is forced explicitly; without that this leg passes for the
     # wrong reason. One Python version is enough: this is an encoding leg,
     # not a compatibility matrix — the range is covered above.
@@ -58,7 +57,7 @@ jobs:
           python skill_audit.py examples/before > out.txt 2> err.txt || code=$?
           cat out.txt
           if grep -qE 'UnicodeEncodeError|Traceback' err.txt; then
-            echo "D48 regression: the report is not renderable on a cp1252 console."
+            echo "Regression: the report is not renderable on a cp1252 console."
             cat err.txt
             exit 1
           fi

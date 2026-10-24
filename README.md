@@ -4,7 +4,7 @@ Points at a Claude skill and grades it against a seven-gate quality floor —
 published in full further down this page. Reports gate by gate, with one
 concrete fix per miss, and exits with a code you can script against.
 
-Free, MIT, no dependencies. If you can run `python3 --version`, you can run this.
+Free, MIT, no dependencies. If you have Python 3.8 or newer, you can run this.
 
 ## The gap it closes
 
@@ -25,20 +25,21 @@ skill_audit — skill-audit
            SKILL.md
            scripts: skill_audit.py
 
-  [D] Upload-safe description    PASS          description is 652 of 1024 chars and holds no XML-tag shape.
+  [D] Upload-safe description    PASS          description is 781 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (1 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`audit:`).
   [3] Enforced hard-fails        PASS          Hard-fails are present and the skill ships a script (skill_audit.py).
-  [4] Verify before voice        PASS          A hard constraint is present and a verification step is described.
+  [4] Verify before voice        NOT CHECKABLE No countable/spec'd constraint detected; gate not applicable.
+        -> If the skill does have a hard constraint (a count, a spec), make sure it's verified, not asserted.
   [5] Loud failure, named exit   PASS          Scope boundaries name an explicit exit (if X, refuse and do Y).
   [6] No prior-chat references   PASS          No phrasing that leans on an earlier chat ("as we discussed", "like last time").
   [7] Deciding example           PASS          A worked example is present and shows a catch, not just the happy path.
 
-FAIL 0   REVIEW 0   NOT CHECKABLE 0   PASS 9
+FAIL 0   REVIEW 0   NOT CHECKABLE 1   PASS 8
 
 VERDICT: PASS
-Every gate came back clean.
+Every gate the lint can decide came back clean. One gate it cannot decide is marked NOT CHECKABLE above — read its -> line.
 Not graded: whether the skill works in a fresh session. The lint reads files; only a run shows what a model does with them.
         -> Open a session where your own project instructions do not load, install the skill from its archive, give it a real task that starts with `audit:`, and check what it does against what the skill promises.
 ```
@@ -53,7 +54,7 @@ Whether a skill works in a fresh session — somewhere its author's context does
 not reach — takes running it, and a lint only reads files. So the report says
 so under every verdict, with the step to take, instead of printing a green row
 it did not earn. `PASS` means *nothing found and nothing owed*, not *the skill
-works*: nine clean rows here, and a run still to do.
+works*: eight clean rows here, one row it cannot decide, and a run still to do.
 
 ## The preflights
 
@@ -86,9 +87,9 @@ that does not arrive. The fix is in the frontmatter and nowhere else.
 
 Verifies that
 every path the skill *claims to ship* actually exists — a renamed helper, a
-deleted script, a `references/` file that moved. Gate 3 cannot see this: it
-counts a skill "enforced" if any script sits in its directory, which a stale
-reference still satisfies.
+deleted script, a `references/` file that moved. Gate 3 cannot see this: once
+a script ships, it counts the skill "enforced", and a stale reference to some
+other file does not change that.
 
 It is deliberately narrow. A path counts only where the skill's own layout
 vouches for it — its first segment is a directory the skill ships, or it is a
@@ -123,12 +124,12 @@ Pass `--no-refs` to skip it.
 | | Gate | A failure looks like |
 |---|---|---|
 | 1 | Names the gap | The skill never says what goes wrong without it. It reads as a nice-to-have because nothing establishes the need. |
-| 2 | Deterministic entry | Entry is undecided: a pile of synonyms, or a description that says what the skill is for and never what it is not for. It fires when it shouldn't and stays quiet when it should. A prefix decides entry; so does a description bounded on both sides — this gate asks whether entry is *decided*, not whether it is prefixed. |
+| 2 | Deterministic entry | Entry is undecided: a pile of synonyms, or a description that says what the skill is for and never what it is not for. It fires when it shouldn't and stays quiet when it should. A prefix decides entry; so does a description bounded on both sides — this gate asks whether entry is *decided*, not whether it is prefixed. A prefix counts where the model choosing a skill reads it, in the description (backticked or quoted); declared only in the body, it is REVIEW. |
 | 3 | Enforced hard-fails | Rules stated as prose with nothing checking them. A rule with no check behind it is a preference. |
-| 4 | Verify before voice | A countable constraint — a character limit, a spec, a format — that nothing counts. The output is written around an estimate. |
+| 4 | Verify before voice | A countable constraint — a character, word or line limit, a range, a spec, in digits or in words — that nothing counts. The output is written around an estimate. |
 | 5 | Loud failure, named exit | Scope language with a soft exit. "Try to stay in scope" instead of "if X, refuse and do Y". |
 | 6 | No prior-chat references | The skill leans on a conversation it does not contain — "as we discussed", "like last time". A fresh session never had that conversation, so it quietly does something else. |
-| 7 | Deciding example | The only example is the happy path, so it demonstrates nothing that could have gone wrong. |
+| 7 | Deciding example | The only example is the happy path, so it demonstrates nothing that could have gone wrong. The catch has to sit in the example's own section; an aside ("for example", "e.g.") is not a worked example. |
 
 Gate 6 is the part of a bigger question that a file can show. The bigger
 question — does the skill work in a fresh session at all? — is not a gate,
@@ -136,6 +137,65 @@ because answering it means running the skill, and the report says so under
 every verdict. The worked example in `examples/` carries a line that shows why:
 "Match the tone used in the last few releases" leans on context the file does
 not carry, in words no phrase list would catch. A run catches it.
+
+### What each gate reads
+
+The gates read phrasing, not intent. Each one decides on the short list of
+phrasings below and nothing else: a rule written in other words goes unseen,
+and a weaker match comes back REVIEW, never FAIL. Matching ignores case, and a
+phrase shown in quotes, italics or code in the skill is a mention, not a use.
+
+1. **Names the gap.** PASS on a sentence holding "without this skill", "without
+   the skill", "the base model", "left alone", "the gap", "the failure mode",
+   "doesn't survive", "gets it wrong", "inconsistently", or "otherwise" followed
+   in the same sentence by wrong, fails, breaks, drift or miss. Otherwise REVIEW.
+   It never FAILs, and it does not judge whether the gap is real.
+2. **Deterministic entry.** Read in the description only. PASS on a backticked
+   or quoted token ending in `:` or `/` with "trigger", "prefix", "fires on",
+   "invoked with", "treat ... as a command", or a message that "begins with" it,
+   within 60 characters; on "any message beginning with", "primary trigger is",
+   "hard trigger" or "when the user types"; or on a "Use when", "Use for" or
+   "when the user" line together with "do not use this", "not for", "when not
+   to", "skip this" or "instead ... use". The same declaration in the body only is REVIEW, and so is
+   anything else. It never FAILs.
+3. **Enforced hard-fails.** FAIL on "hard-fail" or "hard stop", with any hyphen
+   or none, when no script ships anywhere in the skill (`.py`, `.sh`, `.js`,
+   `.mjs`, `.cjs`, `.ts`, `.rb`, `.pl`, `.ps1`, `.bat`) and no check is described
+   in words ("exit code", "non-zero", "the check returns", "run the check"), or
+   when the only check named is a script missing from the skill. "There are no
+   hard-fails" declares none. Rule-like wording without the token ("you must",
+   "never ...") is REVIEW.
+4. **Verify before voice.** FAIL on a limit written as a limiting word (under,
+   over, at most, up to, within, no more than, no longer than, fewer than, ≤,
+   between ... and ..., keep ... to) with a number in digits or words and a unit
+   (characters, words, lines, sentences, bullets, pages, paragraphs, items,
+   rows), in a clause that directs the output (keep, limit, must, should,
+   never, always, do not, "is wrong", a soft or hard budget; a clause after
+   ", so" or ", but" directs only itself), when nothing in the skill verifies
+   it (verify, confirm, re-run, count the, `wc`, "until it reports", "before
+   replying", or, in the limit's own section, a check that "exits 1 when" over
+   it). A verifying step in another section is REVIEW.
+   A number stated as a fact ("messages over 160 characters are split") is not
+   a rule on the output: NOT CHECKABLE.
+5. **Loud failure, named exit.** FAIL on "try to stay on" (or in, within),
+   "steer ... back", "avoid drifting", "stay on topic", "be careful", "where
+   possible" or "try not to", in a section about scope (an "Out of scope" line,
+   "not for", "do not use for", a hard-fail) that names no exit. A named exit is
+   "if ..., refuse" (or stop, decline, hand off, say so), "refuse and ...", or
+   "say ..., name the other skill, and stop"; a negated one ("don't stop them")
+   is none. "Avoid", "should not" or "try to" beside a boundary is REVIEW.
+6. **No prior-chat references.** FAIL on "as discussed", "as we discussed",
+   "per our", "like last time", "as last time", "like before", "our last
+   conversation" (or previous, chat, session, thread), "earlier in this chat",
+   "as established above", or "you already know ... from our chat". Not when the
+   phrase points into the file ("as discussed in Step 2", "per our convention in
+   the Naming section below") or at a file the skill ships. Anything else PASSes.
+7. **Deciding example.** Reads an example set out under its own heading, as an
+   Input:/Output: pair, or under a bold Example label. PASS when that section
+   says "catch", "would otherwise", "gets it wrong", "instead of" followed by an
+   -ing word, "would have", "silently", "base model", "mistake", "trap", "fails"
+   or "naive"; otherwise REVIEW. Examples given only inline ("for example",
+   "e.g.") are NOT CHECKABLE.
 
 ## Install
 
@@ -158,8 +218,8 @@ Nothing to install after that. Python 3.8+, standard library only.
 ## Compatibility
 
 Runs wherever Claude runs — Claude Code, the claude.ai web app, Cowork, and the
-desktop app. This is a standard Agent Skill: a `SKILL.md` plus one Python file,
-nothing to build and nothing to fetch. There is no minimum Claude Code version
+desktop app. This is a standard Agent Skill: a `SKILL.md` and the one Python file it
+runs, nothing to build and nothing to fetch. There is no minimum Claude Code version
 either; the skill uses no version-gated feature.
 
 Where you install it differs by surface, and the two locations do not sync. A
@@ -171,7 +231,7 @@ the other. That is about where the files live, not about where the skill can run
 Python 3.8 or later, standard library only. That floor is checked, not claimed —
 CI runs the fixtures and the self-audit on 3.8 and 3.12 on every push, plus a
 Windows leg that forces a legacy `cp1252` console so the report is known to
-render where it once crashed.
+render there.
 
 `SETUP.md` has the full statement, including what each install route requires.
 
@@ -194,14 +254,38 @@ Or run the checker directly, without the skill:
                      none needs a human ruling. Undecided gates are listed
                      as NOT CHECKABLE and do not block this
     exit 2   REVIEW   no failures, but a gate needs a human ruling
-    exit 1   FAIL     a gate failed, or a bundled file is missing — fix the
+    exit 1   FAIL     a gate failed, or a file the skill points at is missing — fix the
                      -> items and re-run
-    exit 3   ERROR    nothing gradable at that path
+    exit 3   REFUSED  an input the lint will not grade: nothing gradable at a
+                     path, or a SKILL.md it cannot read as written (a
+                     byte-order mark, UTF-16, bytes that are not UTF-8, an
+                     empty file, frontmatter missing or never closed). The
+                     reason and its fix print on stderr
+    exit 4   USAGE    the command line was wrong (an unknown flag, or no
+                     path), or Python is older than 3.8
 
 Script against `1` — that is the one that means something went wrong. `0` means
 the lint is out of objections, which is not the same as the skill being proven:
 read the `NOT CHECKABLE` rows, and the *Not graded* line under the verdict,
 before you close the question.
+
+`3` and `4` are never verdicts. Across several skills, any FAIL exits `1`;
+otherwise any refused input exits `3`, then any REVIEW `2`, else `0`. So a `0`
+or a `2` never stands for an input the lint did not grade, and `1` still
+catches every FAIL. `--help` exits `0`.
+
+## Calling it from a script
+
+- stdout carries the reports of the skills it graded, and nothing else.
+  Refusals and usage errors go to stderr.
+- With `--json`, stdout is one JSON object for one graded skill, a list of
+  them for several, and empty when nothing was graded. Each object has the keys
+  `name`, `path`, `verdict` (`PASS`, `REVIEW` or `FAIL`), `scripts`,
+  `broken_refs`, `gates` and `not_graded`. Each entry in `gates` has `gate`,
+  `title`, `status`, `message` and `fix`; `status` is `PASS`, `REVIEW`, `FAIL`
+  or `NOT CHECKABLE`.
+- A refusal prints as `skill_audit: REFUSED PATH: REASON.` with a `->` fix line
+  under it.
 
 ## Worked example
 
@@ -220,8 +304,9 @@ gate-by-gate account of what changed and why. Start there.
 
     python3 tests/test_fixtures.py
 
-Asserts all six fixtures still return the exit code — and the preflight rows —
-they are supposed to. The clean ones are the assertions that matter: a lint that
+Asserts the six fixtures, and the edge cases written into the test, still return the exit code — and the preflight rows —
+they are supposed to, and that unreadable input is refused with `3` and usage
+errors exit `4`. The clean ones are the assertions that matter: a lint that
 fails good input loses a stranger's trust on first contact, and there is no
 second contact.
 

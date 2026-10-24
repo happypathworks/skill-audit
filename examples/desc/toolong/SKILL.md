@@ -26,10 +26,10 @@ independent.
 
 The description is past 1024 characters. Nothing refuses it: the platform
 ingests the skill, truncates the field, and drops the tail. What goes over the
-edge here is the end of the *Not for* sentence — the boundaries the author
-wrote, the half of the description that stops the skill firing on a retro or a
-sprint plan. The skill still installs. It just fires on the things its author
-ruled out, while the file on disk still says it does not, which is why this
-costs more debugging time than the outright refusal does.
+edge here is the last 24 characters, cut mid-word out of the final *Not for*
+clause: the boundaries sit at the end of this description, so they are what
+truncation reaches first. The skill still installs. It loses the end of its last
+boundary while the file on disk still states it, which is why this costs more
+debugging time than the outright refusal does.
 
 The fix is to cut it to length by hand, so that the author chooses what goes.

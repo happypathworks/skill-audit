@@ -3,7 +3,8 @@
 This is the same skill twice. `before/` is what a useful, well-meant, entirely
 ordinary skill looks like before anyone has checked it. `after/` is the same
 skill with each gate answered. Nothing was rewritten for style; every change
-exists because a gate named something specific.
+but one exists because a gate named something specific, and the one a reader
+noticed is under gate 6.
 
 Run it yourself:
 
@@ -60,7 +61,7 @@ skill_audit — release-notes
            examples/after/release-notes/SKILL.md
            scripts: check_notes.py
 
-  [D] Upload-safe description    PASS          description is 566 of 1024 chars and holds no XML-tag shape.
+  [D] Upload-safe description    PASS          description is 576 of 1024 chars and holds no XML-tag shape.
   [R] References resolve         PASS          All 1 bundled path(s) resolve. (4 workspace path(s) skipped — not this skill's to resolve)
   [1] Names the gap              PASS          A gap/failure-mode statement is present.
   [2] Deterministic entry        PASS          A deterministic entry (prefix or unambiguous condition) is present (`rel:`).

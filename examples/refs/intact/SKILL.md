@@ -20,7 +20,7 @@ Build the archive with the bundled packer, then verify it:
 
 ```
 python3 scripts/pack.py fragments/
-python3 verify.py out.zip
+python3 verify.py ../out.zip
 ```
 
 The packer reads `word/document.xml` out of each fragment and writes
@@ -28,13 +28,11 @@ The packer reads `word/document.xml` out of each fragment and writes
 user's workspace, not files this skill ships — a reference check must leave
 them alone.
 
-## Hard-fails (enforced by verify.py)
+## Hard-fails (read off verify.py's exit code)
 
 - **No archive the verifier did not accept.** The response is written around
   `verify.py`'s exit code (`0` ok / `1` corrupt). If it did not run, refuse
   to report success.
-
-Every hard-fail above is backed by that exit code, not by this sentence.
 
 ## Scope — and where it refuses
 

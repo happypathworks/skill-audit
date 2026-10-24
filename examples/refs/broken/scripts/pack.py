@@ -1,2 +1,2 @@
 #!/usr/bin/env python3
-"""Pack report fragments into an archive."""
+"""Stand-in packer for this example: it ships so the reference resolves, and packs nothing."""

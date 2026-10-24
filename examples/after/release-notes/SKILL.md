@@ -5,7 +5,8 @@ description: >-
   example. It is a demonstration input, not a skill meant to be installed.
   Turns a changelog into release notes. Any message beginning with `rel:`
   invokes this skill — treat that prefix as a command. `rel:` followed by a
-  path reads that changelog; bare `rel:` reads the newest unreleased section.
+  path reads that changelog; bare `rel:` reads `CHANGELOG.md` in the working
+  directory.
   Without this skill the base model writes release notes from memory of the
   diff, silently invents version numbers that look plausible, and blows the
   200-character summary budget because it never counts.
@@ -31,7 +32,7 @@ Any message beginning with `rel:` fires this skill. Treat the prefix as a
 command, not a topic.
 
 - `rel: <path>` — read that changelog file.
-- `rel:` — read the newest unreleased section of `CHANGELOG.md`.
+- `rel:` — read `CHANGELOG.md` in the working directory.
 
 ## How to run it
 

@@ -24,8 +24,8 @@ decided is the thing this state exists to stop.
 NOT GRADED
     One question sits outside every gate: does the skill work in a fresh
     session? Answering it means running the skill where its author's context
-    does not reach, and a lint only reads files. Gate 6 used to carry that
-    question as its name, so it could FAIL on the one tell a file shows --
+    does not reach, and a lint only reads files. Named for that question,
+    Gate 6 could FAIL on the one tell a file shows --
     phrasing that leans on an earlier chat -- and never PASS: a row that could
     fail and never pass, which is a to-do wearing a gate's badge. Gate 6 now
     grades what it reads, and can PASS. The fresh-session question is printed
@@ -60,7 +60,15 @@ EXIT CODES
                 contain -- or a preflight found a description the platform will
                 not take as written, or a file the skill POINTS AT (links, runs,
                 or names with a pointer verb) and does not ship. Fix and re-run.
-    3   ERROR   nothing gradable was found at the given path(s).
+    3   REFUSED an input the lint will not grade: nothing gradable at a path,
+                or a SKILL.md it cannot read as written (a byte-order mark,
+                UTF-16, bytes that are not UTF-8, an empty file, frontmatter
+                missing or never closed). Named on stderr with its fix.
+    4   USAGE   the command line itself was wrong.
+                So is a Python older than 3.8, which is refused by name.
+    3 and 4 are never verdicts: a REVIEW printed for a file the lint could
+    not read is a verdict on nothing. Across several inputs, FAIL outranks
+    REFUSED, which outranks REVIEW and PASS.
 
 THE [D] PREFLIGHT
     Before the Floor, two integrity checks. This is the first, and it grades
@@ -100,7 +108,7 @@ THE [R] PREFLIGHT
     here, and is reported as skipped rather than flagged. That line is the whole
     design: the check is narrow so that a FAIL means something.
 
-    One more exemption, learned the hard way: a path on a line that announces
+    One more exemption: a path on a line that announces
     itself as illustrative ("**Examples**: `references/finance.md` for
     financial schemas") is naming a file the READER might write, not one this
     skill ships. Skills about writing skills are full of these, and they land
@@ -116,11 +124,20 @@ WHAT THIS IS NOT
 
 import argparse
 import bisect
+import codecs
 import json
 import os
 import re
 import sys
 from datetime import date
+from urllib.parse import unquote
+
+# The floor is Python 3.8. An older interpreter is refused here, by name,
+# rather than left to die later on a line it cannot run.
+if sys.version_info < (3, 8):
+    sys.stderr.write("skill_audit: needs Python 3.8 or newer; this is Python %d.%d "
+                     "(exit 4, no verdict)\n" % tuple(sys.version_info[:2]))
+    sys.exit(4)
 
 # Windows consoles default to a legacy code page (cp1252 on en-US). The
 # report, and any evidence quoted out of an audited SKILL.md, can contain
@@ -155,49 +172,133 @@ GATES = [
 # softer PASS: it is the lint declining to hold an opinion, and the -> line
 # under it names what a human would have to do to settle it.
 NOTCHECK = "NOT CHECKABLE"
-STATUSES = ("FAIL", "REVIEW", NOTCHECK, "PASS")  # worst-first, for verdict ordering
+STATUSES = ("FAIL", "REVIEW", NOTCHECK, "PASS")  # worst-first: badge width and the per-status counts
 BADGE_W = max(len(s) for s in STATUSES)
 
-SCRIPT_EXT = {".py", ".sh", ".js", ".ts", ".rb", ".pl", ".ps1", ".bat"}
+SCRIPT_EXT = {".py", ".sh", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl", ".ps1", ".bat"}
+
+EXIT_PASS, EXIT_FAIL, EXIT_REVIEW, EXIT_REFUSED, EXIT_USAGE = 0, 1, 2, 3, 4
 
 
 # -------------------------------------------------------------- load skill ---
 
 def find_skill_md(directory):
     for name in os.listdir(directory):
-        if name.lower() == "skill.md":
+        if name.lower() == "skill.md" and os.path.isfile(os.path.join(directory, name)):
             return os.path.join(directory, name)
     return None
+
+
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", re.DOTALL)
 
 
 def parse_frontmatter(text):
     """Return (frontmatter_dict, body). Naive YAML: enough for name/description."""
     if not text.startswith("---"):
         return {}, text
-    m = re.match(r"^---\s*\n(.*?)\n---\s*\n?(.*)$", text, re.DOTALL)
+    m = FRONTMATTER_RE.match(text)
     if not m:
         return {}, text
     raw, body = m.group(1), m.group(2)
     fm, key, buf = {}, None, []
     for line in raw.splitlines():
-        top = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
+        if line.startswith("#"):  # a comment at column 0 belongs to no value
+            continue
+        # a key may be quoted ("description":) or spaced (description :)
+        top = re.match(r"""^(["']?)([A-Za-z0-9_-]+)\1\s*:\s*(.*)$""", line)
         if top and not line.startswith((" ", "\t")):
             if key is not None:
-                fm[key] = " ".join(b.strip() for b in buf).strip()
-            key = top.group(1).lower()
-            buf = [top.group(2)]
+                fm[key] = _scalar(buf)
+            key = top.group(2).lower()
+            buf = [top.group(3)]
         else:
             buf.append(line)
     if key is not None:
-        fm[key] = " ".join(b.strip() for b in buf).strip()
-    # strip YAML folding markers left in values
-    for k, v in fm.items():
-        fm[k] = re.sub(r"^[>|][-+]?\s*", "", v).strip().strip('"').strip("'")
+        fm[key] = _scalar(buf)
     return fm, body
 
 
+def _scalar(lines):
+    """One frontmatter value as the platform's YAML parser decodes it."""
+    block = re.match(r"^\|([-+]?)\s*$", lines[0].strip())
+    if block:
+        # A literal block keeps each line's indentation past the block's own,
+        # and its newlines; the default chomping keeps one final newline.
+        rest = lines[1:]
+        ind = min((len(l) - len(l.lstrip()) for l in rest if l.strip()), default=0)
+        v = "\n".join(l[ind:] for l in rest).rstrip("\n")
+        return v if not v or block.group(1) == "-" else v + "\n"
+    v = re.sub(r"^[>|][-+]?\s*", "", " ".join(b.strip() for b in lines).strip()).strip()
+    if len(v) > 1 and v[0] == v[-1] == '"':
+        # A double-quoted scalar is decoded by the platform: "\u003cpath\u003e"
+        # arrives as <path>, so [D] has to read it decoded too.
+        return _yaml_unescape(v[1:-1])
+    if len(v) > 1 and v[0] == v[-1] == "'":
+        return v[1:-1].replace("''", "'")  # '' is one quote in a single-quoted scalar
+    return v.strip('"').strip("'")
+
+
+YAML_ESCAPE = re.compile(r"\\(?:u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|x([0-9A-Fa-f]{2})|(.))")
+YAML_SIMPLE = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "/": "/", " ": " ", "0": "\0"}
+
+
+def _yaml_unescape(s):
+    """YAML double-quoted escapes: \\uXXXX, \\UXXXXXXXX, \\xXX and the common one-letter ones."""
+    def one(m):
+        code = m.group(1) or m.group(2) or m.group(3)
+        return chr(int(code, 16)) if code else YAML_SIMPLE.get(m.group(4), m.group(0))
+    return YAML_ESCAPE.sub(one, s)
+
+
+FRONTMATTER_FIX = ("Open SKILL.md with a frontmatter block: a --- line, name: and "
+                   "description: lines, and a closing --- line.")
+
+
+def refusal(path, reason, fix):
+    """A SKILL.md, or a path, the lint will not grade. Exit 3, never a verdict."""
+    return {"refused": True, "path": path, "reason": reason, "fix": fix}
+
+
+def read_skill_md(md):
+    """(text, None) for a SKILL.md the lint can grade, else (None, refusal).
+
+    Each refusal below is a file that would otherwise get a verdict. Read
+    with errors="replace", a byte-order mark hides the frontmatter and grades
+    REVIEW with [D] NOT CHECKABLE; UTF-16 and binary bytes decode to
+    replacement characters and grade REVIEW; an empty file, or one with no
+    frontmatter, grades REVIEW, "the normal result for a decent skill". A
+    verdict on a file the lint could not read says something about nothing.
+    """
+    with open(md, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(codecs.BOM_UTF8):
+        return None, refusal(md, "SKILL.md starts with a UTF-8 byte-order mark, so its "
+                             "frontmatter does not begin at the first byte",
+                             "Save SKILL.md as UTF-8 without a byte-order mark (BOM).")
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return None, refusal(md, "SKILL.md is UTF-16 (or UTF-32) text", "Save SKILL.md as UTF-8.")
+    if b"\x00" in raw:
+        return None, refusal(md, "SKILL.md contains NUL bytes: it is binary, or UTF-16 "
+                             "without a byte-order mark", "Save SKILL.md as UTF-8 text.")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return None, refusal(md, "SKILL.md is not UTF-8 (the first bad byte is at offset %d)"
+                             % e.start, "Save SKILL.md as UTF-8.")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not text.strip():
+        return None, refusal(md, "SKILL.md is empty", FRONTMATTER_FIX + " Then write the body.")
+    if not text.startswith("---"):
+        return None, refusal(md, "SKILL.md has no frontmatter: its first line is not ---",
+                             FRONTMATTER_FIX)
+    if not FRONTMATTER_RE.match(text):
+        return None, refusal(md, "SKILL.md's frontmatter is never closed, or is empty: no "
+                             "--- line follows the name and description", FRONTMATTER_FIX)
+    return text, None
+
+
 def load_skill(path):
-    """Return a skill dict, or None if nothing gradable is here."""
+    """Return a skill dict, a refusal dict, or None if no SKILL.md is here."""
     if os.path.isdir(path):
         md = find_skill_md(path)
         if not md:
@@ -209,8 +310,9 @@ def load_skill(path):
     else:
         return None
 
-    with open(md, encoding="utf-8", errors="replace") as fh:
-        text = fh.read()
+    text, refused = read_skill_md(md)
+    if refused:
+        return refused
     fm, body = parse_frontmatter(text)
 
     scripts = []
@@ -222,6 +324,16 @@ def load_skill(path):
     except OSError:
         pass
 
+    # Gate 3's checks: a script anywhere in the skill, scripts/check.py as much
+    # as a check.py beside SKILL.md.
+    checks = []
+    for root, dirs, names in os.walk(skill_dir):
+        # A folder holding its own SKILL.md is another skill, and its checks are its own.
+        dirs[:] = sorted(d for d in dirs if d not in ("node_modules", ".git", "__pycache__")
+                         and not os.path.isfile(os.path.join(root, d, "SKILL.md")))
+        checks += sorted(os.path.relpath(os.path.join(root, n), skill_dir).replace(os.sep, "/")
+                         for n in names if os.path.splitext(n)[1].lower() in SCRIPT_EXT)
+
     name = fm.get("name") or os.path.basename(skill_dir) or os.path.basename(md)
     return {
         "path": md,
@@ -231,28 +343,44 @@ def load_skill(path):
         "body": body,
         "full": text,
         "scripts": scripts,
+        "checks": checks,
     }
 
 
+NOTHING_GRADABLE_FIX = ("Point me at a skill directory (with a SKILL.md), a SKILL.md file, "
+                        "or a folder of skills.")
+
+
 def collect_skills(paths):
-    """Expand paths into a list of skill dicts (supports a folder of skills)."""
+    """Expand paths into skill and refusal dicts (supports a folder of skills).
+
+    A path that yields nothing is a refusal of its own. Dropped silently, a
+    mistyped second path left the first one's verdict standing as the run's.
+    """
     found, seen = [], set()
 
     def add(sk):
         if sk and sk["path"] not in seen:
             seen.add(sk["path"])
             found.append(sk)
+        return bool(sk)
 
     for p in paths:
         sk = load_skill(p)
         if sk:
             add(sk)
             continue
+        hit = False
         if os.path.isdir(p):
             for child in sorted(os.listdir(p)):
                 cd = os.path.join(p, child)
                 if os.path.isdir(cd):
-                    add(load_skill(cd))
+                    hit = add(load_skill(cd)) or hit
+        if not hit:
+            why = ("no such file or folder" if not os.path.exists(p) else
+                   "no SKILL.md here, and no skill folder under it" if os.path.isdir(p) else
+                   "a file, but not a SKILL.md")
+            add(refusal(p, "nothing gradable: " + why, NOTHING_GRADABLE_FIX))
     return found
 
 
@@ -267,11 +395,10 @@ def has(patterns, text, flags=re.IGNORECASE):
 
 
 GAP_MARKERS = [
-    r"does\s?n'?t?\s+survive", r"\bwithout this\b", r"\bwithout the skill\b",
-    r"\bthe base model\b", r"\bleft alone\b", r"\bfrom memory\b",
+    r"does\s?n'?t?\s+survive", r"\bwithout this skill\b", r"\bwithout the skill\b",
+    r"\bthe base model\b", r"\bleft alone\b",
     r"\bthe gap\b", r"\bthe failure mode\b", r"\botherwise\b[^.\n]{0,60}\b(wrong|fails?|breaks?|drift|miss)",
-    r"\b(forget|forgets|skip|skips|fudge|fudges|confabulate|confabulates|drift|drifts)\b",
-    r"\bgets? (?:this )?wrong\b", r"\binconsistent(?:ly)?\b",
+    r"\bgets? (?:this |it )?wrong\b", r"\binconsistent(?:ly)?\b",
 ]
 
 # a deterministic entry: a prefix/condition, not a keyword pile
@@ -285,7 +412,16 @@ GAP_MARKERS = [
 # prose within TRIGGER_WINDOW characters has to say the token is the trigger.
 # This is the same discipline GAP_MARKERS uses to keep "otherwise ... wrong"
 # inside one sentence; here it is what stops a folder from being a trigger.
-PREFIX_TOKEN = r"`[A-Za-z][\w-]{0,23}[:/]`"
+#
+# The token may be quoted rather than backticked. A description is a YAML
+# scalar and is usually written that way -- 'Any message beginning with
+# "audit:"' -- and the description is where a prefix has to be (gate2).
+_PREFIX_CORE = r"[A-Za-z][\w-]{0,23}[:/]"
+PREFIX_TOKEN = (r"`" + _PREFIX_CORE + r"`"
+                r"|\"" + _PREFIX_CORE + r"\""
+                r"|\u201c" + _PREFIX_CORE + r"\u201d"
+                r"|'" + _PREFIX_CORE + r"'"
+                r"|\u2018" + _PREFIX_CORE + r"\u2019")
 TRIGGER_WINDOW = 60
 # Phrases about HOW THE SKILL IS ENTERED, not merely about the same subject.
 # A bare topical word cannot be here: `\bcommand\b` next to `commands/` in a
@@ -299,7 +435,6 @@ TRIGGER_CONTEXT = [
     r"\b(?:message|prompt|request|input|line)s?\b[^.\n]{0,24}\b(?:begin|start|open)(?:s|ning)?\s+with\b",
     r"\binvoked? (?:with|by|as)\b", r"\bwhen the user types\b",
     r"\btreat\b[^.\n]{0,20}\bas (?:a )?(?:command|prefix|trigger)\b",
-    r"\bfollowed by\b",
 ]
 
 # Phrases that declare a deterministic entry on their own, no token needed.
@@ -331,29 +466,59 @@ KEYWORD_TRIGGER_MARKERS = [
 # make it worse: nobody should have to type `docx:` to get a Word file handled.
 # The gate asks whether entry is DECIDED, not whether it is PREFIXED.
 ENTRY_NEGATIVE_MARKERS = [
-    r"\b(?:do not|don't|never)\s+(?:use|trigger|invoke|apply)\b",
+    r"\b(?:do not|don't|never)\s+(?:use|trigger|invoke|apply)\s+(?:this|it|the skill|for|when|on|with)\b",
     r"\bnot for\b", r"\bwhen (?:not to|to not)\b", r"\bskip (?:this|it)\b",
     r"\bnot a (?:substitute|replacement)\b",
     r"\binstead of\b[^.\n]{0,60}\buse\b",
     r"\buse\b[^.\n]{0,40}\binstead\b",
 ]
 
-# hard-fail claims. An explicit token is decisive on its own; imperative rule
-# phrasing ("you must", "never <verb>", "always <verb>") is counted, and two or
-# more with no backing check is the prose-hard-fail anti-pattern.
-HARDFAIL_EXPLICIT = [r"hard[\s-]?fail", r"\bhard[\s-]?stop\b", r"\brefuse and\b", r"\b→\s*refuse\b"]
+# hard-fail claims. An explicit token with no backing check FAILs; imperative
+# rule phrasing ("you must", "never <verb>", "always <verb>") with no explicit
+# token and no backing check comes back REVIEW, however many there are.
+# "refuse and" is not on the list: it is a scope exit, which gate 5 grades,
+# and a script-free skill that refuses out-of-scope input declares no hard-fail.
+HARDFAIL_EXPLICIT = [r"hard[\s\-‐-–]?fail", r"\bhard[\s\-‐-–]?stop\b"]
+# "There are no hard-fails in this skill" declares none.
+HARDFAIL_NEGATED = re.compile(r"\b(?:no|without|zero|not any)\s+(?:\w+\s+)?$", re.IGNORECASE)
 IMPERATIVE_RULE = [
     r"\byou must\b", r"\bmust not\b", r"\bmust never\b", r"\bmust always\b",
     r"\bmust\s+\w+", r"\bshall not\b", r"\bnever\s+\w+", r"\balways\s+\w+",
     r"\bdo not\s+\w+", r"\bdon'?t\s+\w+", r"\brefuse\b", r"\breject\b", r"\babort\b",
 ]
+ENFORCED_BY = re.compile(r"\benforced by\s+`?([\w./-]+\.(?:py|sh|js))`?", re.IGNORECASE)
+SCRIPT_NAME = re.compile(r"(?<![\w./-])(?![Nn]ode\.js\b)[\w./-]+\.(?:py|sh|js|mjs|cjs)\b")
+# A check described in words ("unless the check returns 0"), with no script
+# shipped or named. A named script missing from the skill is no check.
 ENFORCEMENT_MARKERS = [
-    r"\bexit code\b", r"\bnon-?zero\b", r"\breturns? \d", r"\.py\b", r"\.sh\b",
-    r"\brun (?:the )?(?:check|script|audit|linter?)\b", r"```(?:bash|sh|python|console)",
+    r"\bexit code\b", r"\bnon-?zero\b", r"\breturns? \d",
+    r"\brun (?:the )?(?:check|script|audit|linter?)\b",
     r"\bthe check (?:returns|fails|passes)\b", r"\bverif(?:y|ies|ied) (?:with|by running)\b",
 ]
 
 # verify-before-voice
+#
+# A countable constraint is written the way people write one: in lines and
+# pages as well as characters, in words ("above two lines") as well as
+# digits, and as a range ("2-3 sentences"). Each shape still needs a limiting
+# word or a limiting construction beside it -- a bare "(1-2 words)" aside is
+# not a rule the output must keep, and charging it as one would FAIL good
+# skills.
+_NUMW = (r"(?:thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen"
+         r"|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve"
+         r"|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)")
+# "three hundred", "twenty-five": a spelled number can run to several words;
+# "1,500" is the same limit as "1500"
+_NUM = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|" + _NUMW + r"(?:[\s-]+" + _NUMW + r")*)"
+_NUMR = _NUM + r"(?:\s*(?:-|\u2013|\u2014|to|or)\s*" + _NUM + r")?"
+_UNIT = r"(?:characters?|chars?|words?|lines?|sentences?|bullets?|pages?|paragraphs?|items?|rows?)"
+_LIMIT = (r"(?:under|over|at most|at least|up to|within|max(?:imum)?|min(?:imum)?"
+          r"|no more than|not more than|no fewer than|fewer than|more than|less than"
+          r"|limit(?:ed)? to|above|below|exceed(?:s|ing)?|capped at"
+          r"|no longer than|not longer than|no shorter than|longer than|shorter than)")
+# Not "past" or "beyond": "the description is past 1024 characters" states a
+# fact about a file. Leaving them out misses "a bullet runs past two lines",
+# which costs a NOT CHECKABLE; reading them would cost a FAIL on good skills.
 CONSTRAINT_MARKERS = [
     r"\bcharacter count\b", r"\bchar(?:acter)? limit\b", r"\bword count\b",
     r"\bexactly \d", r"\bno more than \d",
@@ -366,13 +531,42 @@ CONSTRAINT_MARKERS = [
     # is the skill promising its own output CONFORMS to one.
     r"\b(?:conform(?:s|ing)?\s+to|match(?:es|ing)?|against|validate[sd]?\s+against)\s+(?:the\s+|its\s+|this\s+)?spec(?:ification)?\b",
     r"\bto\s+spec\b", r"\bmust match\b", r"\bcountable\b",
+    # "above two lines", "under 3-5 bullets", "within one page"
+    r"\b" + _LIMIT + r"\s+" + _NUMR + r"\s+" + _UNIT + r"\b",
+    # "two lines at most", "3 bullets maximum"
+    r"\b" + _NUMR + r"\s+" + _UNIT + r"\s+(?:at most|max(?:imum)?|or (?:fewer|less))\b",
+    r"\b" + _NUM + r"\s+at most\b",
+    # "between 3 and 5 bullets"
+    r"\bbetween\s+" + _NUM + r"\s+and\s+" + _NUM + r"\s+" + _UNIT + r"\b",
+    # "keep each bullet to one line", "limit the summary to 2-3 sentences"
+    r"\b(?:keep|limit|cap|trim|hold)\b[^.\n]{0,40}?\bto\s+" + _NUMR + r"\s+" + _UNIT + r"\b",
+    # "a soft four lines and a hard five"
+    r"\b(?:soft|hard)\s+(?:limit\s+of\s+)?" + _NUM + r"\s+" + _UNIT + r"\b",
+    # "<= 280 characters", "≤ 280 characters"
+    r"(?:≤|<=)\s*" + _NUM + r"\s*" + _UNIT + r"\b",
 ]
+# A constraint is a rule on the output only in a sentence that directs:
+# "Keep the summary under 200 words". "Messages over 160 characters are split
+# by the carrier" states a fact, and a fact is nothing to count.
+DIRECTIVE = re.compile(r"\b(?:keep|limit|cap|trim|hold|must|should|never|always|do not|don't|make sure|ensure"
+                       r"|stay|write|use|return|reply|output|no more than|at most|exactly|aim for"
+                       r"|is wrong|is too long|not allowed|soft|hard|budget|limit|max(?:imum)?|min(?:imum)?)\b"
+                       r"|≤|<=",
+                       re.IGNORECASE)
 VERIFY_MARKERS = [
     r"\bverif(?:y|ies|ied|ication)\b", r"\bcount (?:and|then) (?:confirm|check|verify)\b",
     r"\bbefore (?:emitting|responding|the response|you (?:respond|write))\b",
-    r"\bconfirm(?:s|ed)? (?:the|each|every)\b", r"\bre-?run\b", r"\bcheck (?:the )?(?:count|output|result)\b",
+    r"\bconfirm(?:s|ed)? (?:the|each|every|it|them)\b", r"\bre-?run\b", r"\bcheck (?:the )?(?:count|output|result)\b",
     r"\bmeasure(?:d|s)? (?:the|it)\b",
+    r"\bbefore (?:replying|answering|you (?:reply|answer))\b",
+    r"\bprints? the (?:real |actual )?(?:count|number|length)\b",
+    r"`wc\b", r"\buntil it (?:reports|returns|prints|shows)\b", r"\bcount (?:the|them|it|each|every)\b",
+    r"\blen\(",
 ]
+# A shipped check that fails over the limit ("exits 1 when the draft is over",
+# "post only after it exits 0") verifies it only beside the limit: elsewhere it
+# is any hard-fail's check, and reading it there would turn FAILs into REVIEW.
+VERIFY_BESIDE = VERIFY_MARKERS + [r"\bexits?\s+`?(?:1|non-?zero)`?\s+(?:when|if)\b", r"\bafter it exits\s+`?0`?"]
 
 # scope boundaries / named exits
 SCOPE_MARKERS = [
@@ -388,35 +582,108 @@ NAMED_EXIT_MARKERS = [
     r"\brefuse\b[^\n]{0,30}?[,]\s*\w", r"\brefuse and\b",
     r"\b(refuse|decline)\s+(?:to\s+)?(?:grade|emit|proceed|use|continue)\b",
     r"\b→\s*(refuse|stop|decline|hand)\b", r"\bif X, (?:refuse|do)\b",
+    # "say it is out of scope, name the pdf skill, and stop"
+    r"\b(?:say|tell|explain)\b[^.\n]{0,100}?\band (?:stop|refuse|decline|hand off)\b",
+    r"\bname the [\w-]+ skill\b",
 ]
-SOFT_SCOPE_MARKERS = [
-    r"\btry to stay\b", r"\bshould (?:not|avoid)\b", r"\bavoid\b", r"\btry (?:not )?to\b",
-    r"\bbe careful\b", r"\bwhere possible\b",
+# "if the user pushes, don't stop them" names no exit.
+EXIT_NEGATED = re.compile(r"\b(?:don'?t|do not|never|not)\s+(?:\w+\s+)?$", re.IGNORECASE)
+# A soft exit FAILs on these phrasings. The first four are scope statements on
+# their own: "Try to stay on the meeting content" needs no "Out of scope" beside it.
+SOFT_SCOPE_SELF = [
+    r"\btry to stay (?:on|in|within|inside|focused)\b", r"\bsteer\b[^.\n]{0,40}\bback\b",
+    r"\bavoid (?:drifting|going off[\s-]topic)\b", r"\bstay on (?:topic|track|task)\b",
 ]
+SOFT_SCOPE_MARKERS = SOFT_SCOPE_SELF + [r"\btry to stay\b", r"\bbe careful\b", r"\bwhere possible\b",
+                                        r"\btry not to\b"]
+# Weaker: "avoid", "should not", "try to" beside a scope boundary is REVIEW.
+SOFT_SCOPE_WEAK = [r"\bshould (?:not|avoid)\b", r"\bavoid\b", r"\btry to\b"]
 
 # cold-handoff killers: references to context the file does not contain
+# \s+ between words, because markdown prose is hard-wrapped. "As discussed in
+# the Scope section above" points into the file, and "per our style guide,
+# `references/style.md`" names a file the skill ships: neither leans on a chat.
 CONTEXT_LEAK_MARKERS = [
-    r"\bas (?:we )?discussed\b", r"\bper our\b", r"\bas (?:above|before) in (?:this|the) (?:chat|thread|conversation)\b",
-    r"\blike (?:last time|before)\b", r"\bearlier in (?:this|the) (?:chat|thread)\b",
-    r"\bas established (?:above|earlier)\b",
+    r"\bas\s+(?:we\s+)?discussed\b(?!\s+(?:above|below)\b"
+    r"|\s+(?:in|under)\b[^.\n]{0,40}?\b(?:section|heading|step|table|part)s?\b)",
+    r"\bper\s+our\b(?![^.\n]{0,60}(?:`|\]\(|\b(?:section|heading|step|table|below|above)\b))",
+    r"\bas\s+(?:above|before)\s+in\s+(?:this|the)\s+(?:chat|thread|conversation)\b",
+    r"\blike\s+(?:last\s+time|before\b(?![/-]|\s+and\s+after))", r"\bas\s+last\s+time\b",
+    # "our" only, as README lists it: "the transcript of the previous session"
+    # the user hands over is a file, not a prior turn.
+    r"\bour\s+(?:last|previous|prior|earlier)\s+(?:conversation|chat|session|thread|discussion)\b",
+    r"\bearlier\s+in\s+(?:this|the)\s+(?:chat|thread)\b",
+    r"\bas\s+established\s+(?:above|earlier)\b",
     # "you already know" needs a discourse-deictic object to be a leak. Bare,
     # it FAILed a known-good skill for telling the reader they know their own
     # phone contacts -- a fact about the world, not about a prior turn.
-    r"\byou already know\b[^.\n]{0,60}\bfrom (?:our|this|the) (?:chat|thread|conversation|session|discussion)\b",
-    r"\byou already know\b[^.\n]{0,40}\bfrom (?:above|earlier|before)\b",
-    r"\byou already know (?:this|that|the drill|how this (?:goes|works)|what (?:I|we) mean)\b",
+    r"\byou\s+already\s+know\b[^.\n]{0,60}\bfrom\s+(?:our|this|the)\s+(?:chat|thread|conversation|session|discussion)\b",
+    r"\byou\s+already\s+know\b[^.\n]{0,40}\bfrom\s+(?:above|earlier|before)\b",
+    r"\byou\s+already\s+know\s+(?:this|that|the\s+drill|how\s+this\s+(?:goes|works)|what\s+(?:I|we)\s+mean)\b",
 ]
 
+# A phrase in code, single emphasis or quotes is named, not used: "strip
+# filler such as *as we discussed*" forbids the phrase rather than leaning on it.
+# README states this for every gate, so gates 1, 3, 4, 6 and 7 all read _masked().
+LEAK_MENTION = re.compile(r"`[^`]*`|(?<![*\w])\*(?!\*)[^*\n]+\*(?![*\w])|(?<!\w)_[^_\n]+_(?!\w)"
+                          "|\"[^\"\\n]*\"|\u201c[^\u201d\\n]*\u201d")
+
+
+def _masked(text):
+    """The text with mentioned phrases blanked, same length and same lines;
+    a code span keeps its backticks, so "per our ... `file`" still sees one."""
+    def blank(m):
+        s = m.group(0)
+        if s.startswith("`") and len(s) > 1:
+            return "`" + re.sub(r"[^\n]", "x", s[1:-1]) + "`"
+        return re.sub(r"[^\n]", " ", s)
+    return LEAK_MENTION.sub(blank, text)
+
+
+# A hard-wrapped line break inside a paragraph is a space. Not before a blank
+# line, a heading, a list item, a table row, a fence or a quote: those start a
+# new block. Same length, so offsets still index the original.
+SOFT_WRAP = re.compile(r"\n(?![ \t]*(?:\n|$|#|[-*+][ \t]|\d+[.)][ \t]|\||```|~~~|>))")
+
+
+def _unwrapped(text):
+    return SOFT_WRAP.sub(" ", text)
+
+
+# "as discussed in references/style.md": the path a leak phrase points at, in
+# the rest of its sentence.
+LEAK_TARGET = re.compile(r"[\w][\w./-]*\.\w+")
+
+
+def _points_at_shipped(sk, tail):
+    """True when `tail` (the text after a leak phrase) names a file the skill ships."""
+    tail = re.split(r"\.(?=\s|$)", tail[:80], maxsplit=1)[0]
+    for tok in LEAK_TARGET.findall(tail):
+        tok = tok.rstrip(REF_TRAILING)
+        if not REF_REJECT.search(tok) and os.path.isfile(os.path.join(sk["dir"], *tok.split("/"))):
+            return True
+    return False
+
 # worked example
-EXAMPLE_MARKERS = [
-    r"^#+\s+.*\bexamples?\b", r"\bworked example\b", r"\bwalkthrough\b",
-    r"^\s*(?:Input|User|Prompt|Output)\s*:", r"\bfor (?:example|instance)\b",
-    r"\*\*example\b", r"^\s*(?:Example|Ex\.)\s*\d", r"\be\.g\.\b",
+#
+# Two kinds of marker. A worked example is something the file sets out -- a
+# heading, an Input:/Output: pair, a bold "Example" label -- and it has a
+# section of its own, which is where its catch has to be (gate7). An inline
+# aside ("for example", "e.g.") or a mention ("the worked example in
+# examples/") is a clause in a sentence about something else: it shows no
+# case going wrong, and the section around it is not the example's.
+WORKED_EXAMPLE_MARKERS = [
+    r"^#+\s+.*\b(?:examples?|walkthrough)\b",
+    r"^\s*(?:Input|User|Prompt|Output)\s*:",
+    r"\*\*example\b", r"^\s*(?:Example|Ex\.)\s*\d",
     r"\bhere'?s (?:an|a) example\b", r"\bsample (?:input|output|run|skill|call)\b",
 ]
+INLINE_EXAMPLE_MARKERS = [r"\bfor (?:example|instance)\b", r"\be\.g\.\b",
+                          r"\bworked example\b", r"\bwalkthrough\b"]
+EXAMPLE_MARKERS = WORKED_EXAMPLE_MARKERS + INLINE_EXAMPLE_MARKERS
 CATCH_MARKERS = [
     r"\bcatch(?:es|ing)?\b", r"\bcaught\b", r"\bwould otherwise\b", r"\bgets? (?:it )?wrong\b",
-    r"\binstead of\b", r"\bmistake\b", r"\btrap\b", r"\bgotcha\b", r"\bbefore\b.*\bafter\b",
+    r"\binstead of \w+ing\b", r"\bwould have\b", r"\bsilently\b", r"\b(?:bare|base) model\b", r"\bmistake\b", r"\btrap\b", r"\bgotcha\b", r"\bbefore\b.*\bafter\b",
     r"\bfails?\b", r"\bthe bad case\b", r"\bnaive\b", r"\bna(?:ï|i)ve\b",
 ]
 
@@ -424,8 +691,9 @@ CATCH_MARKERS = [
 # ------------------------------------------------------------ gate checks ----
 
 def gate1(sk):
-    text = sk["description"] + "\n" + sk["body"]
-    if has(GAP_MARKERS, text):
+    # Headings dropped: "## The gap it closes" over "See below" states no gap.
+    text = sk["description"] + "\n" + re.sub(r"(?m)^#{1,6}\s.*$", "", sk["body"])
+    if has(GAP_MARKERS, _masked(text)):  # "without this skill" in quotes is a mention
         return "PASS", "A gap/failure-mode statement is present.", \
             "Confirm it names one specific thing the base model gets wrong — not a vague benefit."
     return "REVIEW", "No gap statement detected.", \
@@ -433,7 +701,7 @@ def gate1(sk):
 
 
 def _declared_prefix(text):
-    """A backticked prefix token the surrounding prose calls a trigger.
+    """A backticked or quoted prefix token the surrounding prose calls a trigger.
 
     The token alone is worthless (see PREFIX_TOKEN). Returns the match only
     when TRIGGER_CONTEXT appears within TRIGGER_WINDOW characters either side,
@@ -443,16 +711,33 @@ def _declared_prefix(text):
     for m in re.finditer(PREFIX_TOKEN, text):
         lo = max(0, m.start() - TRIGGER_WINDOW)
         hi = min(len(text), m.end() + TRIGGER_WINDOW)
-        if has(TRIGGER_CONTEXT, text[lo:hi]):
+        clause = re.split(r"[.;\n]", text[m.end():hi], maxsplit=1)[0]
+        if has(TRIGGER_CONTEXT, text[lo:hi]) and not has(PREFIX_RETIRED, clause):
             return m
     return None
 
 
+# "`min:` is deprecated and no longer invokes this skill": named, and retired.
+# Read in the token's own clause only, so "`min:` fires it; `minutes:` no
+# longer does" keeps `min:`.
+PREFIX_RETIRED = [r"\bdeprecated\b", r"\bno longer\b", r"\bretired\b",
+                  r"\b(?:does|do) not (?:invoke|trigger|fire)\b"]
+
+
+def _as_code(m):
+    """A declared prefix as the report prints it: backticked, however quoted."""
+    return "`%s`" % m.group(0)[1:-1]
+
+
 def gate2(sk):
-    text = sk["description"] + "\n" + sk["body"]
+    # The description is the only text read when a skill is chosen; the body
+    # is read after. A prefix the body declares therefore cannot route a
+    # message to this skill, however clearly it is written there, so a
+    # deterministic entry counts only where the router reads it.
+    text = sk["description"]
     prefix = _declared_prefix(text)
     if prefix or has(ENTRY_PHRASES, text):
-        detail = (" (%s)" % prefix.group(0)) if prefix else ""
+        detail = (" (%s)" % _as_code(prefix)) if prefix else ""
         return "PASS", "A deterministic entry (prefix or unambiguous condition) is present%s." % detail, ""
     # Entry decided in prose rather than in punctuation: the description says
     # both when to fire and when not to. Unambiguous without a prefix, and the
@@ -460,6 +745,14 @@ def gate2(sk):
     if has(KEYWORD_TRIGGER_MARKERS, sk["description"]) \
             and has(ENTRY_NEGATIVE_MARKERS, sk["description"]):
         return "PASS", "Entry is bounded on both sides: the description says when to fire and when not to.", ""
+    in_body = _declared_prefix(sk["body"])
+    if in_body or has(ENTRY_PHRASES, sk["body"]):
+        shown = (" (%s)" % _as_code(in_body)) if in_body else ""
+        return "REVIEW", "A deterministic entry is declared in the body%s but not in the description." % shown, \
+            "Only the description is read when a skill is chosen, so an entry the body declares cannot route " \
+            "a message here. Say it in the description: 'Any message beginning with `foo:` invokes this " \
+            "skill.' (Gate 2)"
+    text = sk["description"] + "\n" + sk["body"]
     if has(KEYWORD_TRIGGER_MARKERS, text):
         return "REVIEW", "Entry is description/keyword-based — the ecosystem norm, but the boundary is unstated.", \
             "This fires semantically, and nothing says which adjacent requests it must decline. Either add a hard " \
@@ -473,18 +766,58 @@ def _count(patterns, text):
     return sum(1 for pat in patterns if re.search(pat, text, re.IGNORECASE))
 
 
+def _explicit_hardfail(text):
+    """A hard-fail token the text declares, not one it denies ("no hard-fails")."""
+    for pat in HARDFAIL_EXPLICIT:
+        for m in re.finditer(pat, text, re.IGNORECASE):
+            if not HARDFAIL_NEGATED.search(text[max(0, m.start() - 24):m.start()]):
+                return m
+    return None
+
+
+SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+
+
+def _described_check(text):
+    """A check described in words in a sentence that names no script. A script
+    named in that sentence is the check, and none ships (README: "when the only
+    check named is a script missing from the skill"); a file named in another
+    sentence, such as the user's vitest.config.js, is not the check."""
+    text = _unwrapped(text)
+    for pat in ENFORCEMENT_MARKERS:
+        for m in re.finditer(pat, text, re.IGNORECASE):
+            lo = max([e.end() for e in SENTENCE_END.finditer(text, 0, m.start())] or [0])
+            nxt = SENTENCE_END.search(text, m.end())
+            if not SCRIPT_NAME.search(text[lo:nxt.start() if nxt else len(text)]):
+                return True
+    return False
+
+
 def gate3(sk):
     text = sk["body"]
-    explicit = bool(has(HARDFAIL_EXPLICIT, text))
+    # `hard-fail: true` in code, or "hard stop" in quotes, is content the skill
+    # reads, not a rule it declares (README: a mention, not a use).
+    explicit = bool(_explicit_hardfail(_masked(text)))
     imperatives = _count(IMPERATIVE_RULE, text)
-    enforced = bool(sk["scripts"]) or has(ENFORCEMENT_MARKERS, text)
+    checks = sk.get("checks", sk["scripts"])
+    # Enforced: a script ships, or a check is described in words and no script
+    # is named. A script the text names but the skill lacks is no check.
+    enforced = bool(checks)
+
+    def shipped(name):  # "enforced by check.py" is met by scripts/check.py as well
+        return os.path.isfile(os.path.join(sk["dir"], *name.split("/"))) or \
+            any(c == name or c.endswith("/" + name) for c in checks)
+    if any(not shipped(m.group(1)) for m in ENFORCED_BY.finditer(text)):
+        enforced = False  # "enforced by check.py", and check.py is not in the skill
+    described = not checks and _described_check(text)
     if not explicit and imperatives == 0:
         return "REVIEW", "No hard-fails declared.", \
             "If this skill has a constraint that must always hold, name it as a hard-fail and back it with a check."
     if enforced:
-        detail = ("ships a script (%s)" % ", ".join(sk["scripts"])) if sk["scripts"] \
-            else "references a mechanical check"
-        return "PASS", "Hard-fails are present and the skill %s." % detail, \
+        return "PASS", "Hard-fails are present and the skill ships a script (%s)." % ", ".join(sk["scripts"] or checks), \
+            "Confirm every claimed hard-fail is actually covered by a check — a lint can't map claim to check."
+    if described:
+        return "PASS", "Hard-fails are present and the skill references a mechanical check.", \
             "Confirm every claimed hard-fail is actually covered by a check — a lint can't map claim to check."
     if explicit:
         return "FAIL", "A hard-fail is explicitly declared but asserted in prose with no backing check.", \
@@ -494,21 +827,94 @@ def gate3(sk):
         "If any of these must always hold, name it as a hard-fail and back it with a check rather than leaving it as prose."
 
 
+# Where a directing word stops reaching a limit: a sentence end, or a clause
+# joined by "so"/"but". "Slack truncates messages over 4,000 characters, so
+# never paste a whole log" directs the pasting, not the count (README: a
+# number stated as a fact is NOT CHECKABLE).
+CLAUSE_END = re.compile(r"[.;\n]|,\s+(?:so|but)\b", re.IGNORECASE)
+
+
+def _directive(pattern_list, text):
+    """The first constraint match whose clause directs the output."""
+    for pat in pattern_list:
+        for m in re.finditer(pat, text, re.IGNORECASE):
+            lo = max([e.end() for e in CLAUSE_END.finditer(text, 0, m.start())] or [0])
+            nxt = CLAUSE_END.search(text, m.end())
+            hi = nxt.start() if nxt else len(text)
+            if DIRECTIVE.search(text[lo:hi]):
+                return m
+    return None
+
+
+def _defenced(text):
+    """The text with fenced code blanked, same length and same lines: a limit
+    inside a prompt template the skill writes is shown, not a rule on its own
+    output (README: a phrase in code is a mention, not a use)."""
+    out, inside = [], False
+    for line in text.splitlines(keepends=True):
+        if FENCE.match(line):
+            inside = not inside
+            out.append(line)
+        else:
+            out.append(re.sub(r"[^\n]", " ", line) if inside else line)
+    return "".join(out)
+
+
 def gate4(sk):
     text = sk["body"]
-    constraints = has(CONSTRAINT_MARKERS, text)
-    verify = has(VERIFY_MARKERS, text)
+    # Constraints are read outside fences and with mentions blanked (a limit
+    # quoted as an example's input is shown, not set); a verify step may sit
+    # in either (```wc -w reply.md```), so it is read from the text as written.
+    plain = _masked(_defenced(text))
+    constraints = _directive(CONSTRAINT_MARKERS, plain)
+    # In the constraint's own section: "verify the front matter parses" under
+    # Setup does not count a word limit set under Rules.
+    starts = [0] + [m.start() for m in re.finditer(r"(?m)^#{1,6}\s", plain) if m.start() > 0]
+    verify = next((True for a, b in zip(starts, starts[1:] + [len(text)])
+                   if has(CONSTRAINT_MARKERS, plain[a:b]) and has(VERIFY_BESIDE, text[a:b])), None)
     if not constraints:
-        # This was a PASS for the first year of the tool's life, and against a
-        # 31-skill corpus of best-in-class work it was 29 of the 31 — a green
-        # row that meant "nothing here to check". A gate with no premise has
-        # not been satisfied; it has not been asked.
+        # Not a PASS: a gate with no premise has not been satisfied; it has
+        # not been asked.
         return NOTCHECK, "No countable/spec'd constraint detected; gate not applicable.", \
             "If the skill does have a hard constraint (a count, a spec), make sure it's verified, not asserted."
     if verify:
         return "PASS", "A hard constraint is present and a verification step is described.", ""
+    if has(VERIFY_MARKERS, text):
+        # A step elsewhere may still count it ("verify" under Setup, the limit
+        # under Rules). Known-good skills are written this way, so this is a
+        # question for a reader, not a FAIL.
+        return "REVIEW", "A countable/spec'd constraint is present, and a verification step, but not in the same " \
+            "section.", "Confirm the step actually counts this constraint, or move the count beside it. (Gate 4)"
     return "FAIL", "A countable/spec'd constraint is present but no verification step was detected.", \
         "Write the output around a verified result — run the check first, then speak. (Gate 4)"
+
+
+def _named_exit(text):
+    """A named exit that is not negated ("don't stop them" names none). Read
+    with soft wraps joined: "if\\nthe file ..., stop" is one sentence."""
+    text = _unwrapped(text)
+    for pat in NAMED_EXIT_MARKERS:
+        for m in re.finditer(pat, text, re.IGNORECASE | re.MULTILINE):
+            verb = m.lastindex and m.start(m.lastindex)
+            if verb and EXIT_NEGATED.search(text[max(0, verb - 20):verb]):
+                continue
+            return m
+    return None
+
+
+def _soft_beside_scope(text, soft_list=None):
+    """The first soft phrase in a section that is about scope and names no exit.
+
+    Paired across the whole file, a Hard-fails heading at the top and "Avoid
+    jargon" in a style tip at the bottom read as a soft scope exit. A section
+    is about scope when it holds a scope marker or a SOFT_SCOPE_SELF phrase.
+    """
+    for section in re.split(r"(?m)^(?=#{1,6}\s)", _strip_table_rows(text)):
+        if (has(SCOPE_MARKERS, section) or has(SOFT_SCOPE_SELF, section)) and not _named_exit(section):
+            soft = has(soft_list or SOFT_SCOPE_MARKERS, section)
+            if soft:
+                return soft
+    return None
 
 
 def _strip_table_rows(text):
@@ -524,17 +930,21 @@ def _strip_table_rows(text):
 
 def gate5(sk):
     text = sk["body"]
-    scope = has(SCOPE_MARKERS, _strip_table_rows(text))
-    named = has(NAMED_EXIT_MARKERS, text, flags=re.IGNORECASE | re.MULTILINE)
-    soft = has(SOFT_SCOPE_MARKERS, text)
-    if scope and named:
-        return "PASS", "Scope boundaries name an explicit exit (if X, refuse and do Y).", ""
+    scope = has(SCOPE_MARKERS, _strip_table_rows(text)) or has(SOFT_SCOPE_SELF, _strip_table_rows(text))
+    named = _named_exit(text)
+    soft = _soft_beside_scope(text)
     if scope and soft:
         # The anti-pattern this gate FAILs on is scope-as-intention. Naming the
         # soft phrase is the point: quoting "try to stay in scope" at a skill
         # that never wrote it is a fix the author cannot act on.
         return "FAIL", "Scope language is present but the exit is soft (%r)." % soft.group(0), \
             "Replace that with 'if X, refuse and do Y' — a named action, not an intention. (Gate 5)"
+    if scope and named:
+        return "PASS", "Scope boundaries name an explicit exit (if X, refuse and do Y).", ""
+    weak = _soft_beside_scope(text, SOFT_SCOPE_WEAK)
+    if scope and weak:
+        return "REVIEW", "A scope boundary sits beside softer wording (%r) and the lint found no named exit." \
+            % weak.group(0), "Confirm the boundary ends in an action — 'if X, refuse and do Y'. (Gate 5)"
     if scope:
         return "REVIEW", "A scope boundary is present but the lint found no named exit.", \
             "Confirm the boundary ends in an action — 'if X, refuse and do Y' — rather than trailing off. (Gate 5)"
@@ -543,39 +953,107 @@ def gate5(sk):
     # the lint cannot tell "this skill declares no boundary" from "this skill
     # declares one I don't know the words for". Measured against 31 known-good
     # skills the whole list matched one string, inside a table row that
-    # _strip_table_rows correctly drops. Do not widen this list before the
-    # scope-and-soft FAIL branch above gains a proximity constraint: those two
+    # _strip_table_rows correctly drops. The scope-and-soft FAIL branch above
+    # pairs only inside one section (_soft_beside_scope); before that, those two
     # detectors are far enough apart in a long file to pair unrelated
     # sentences, and widening the first arms the second.
     return NOTCHECK, "No scope boundary detected.", \
         "Confirm the skill can't be pulled out of scope, or add a boundary with a named exit."
 
 
+def _context_leak(sk):
+    """The first leak phrase that is used, not mentioned, and points at no
+    file the skill ships. Read with soft wraps joined, so README's own exempt
+    example still exempts when ordinary markdown breaks it across two lines."""
+    body = _unwrapped(sk["body"])
+    masked = _masked(body)
+    for pat in CONTEXT_LEAK_MARKERS:
+        for m in re.finditer(pat, masked, re.IGNORECASE):
+            if not _points_at_shipped(sk, body[m.end():]):
+                return m
+    return None
+
+
 def gate6(sk):
-    leak = has(CONTEXT_LEAK_MARKERS, sk["body"])
+    leak = _context_leak(sk)
     if leak:
         return "FAIL", "The skill leans on a conversation it does not contain (%r)." % leak.group(0), \
             "A fresh session never had that conversation. Put what it refers to into the skill itself. (Gate 6)"
-    # This gate used to be named for the question it cannot answer --
-    # "survives cold handoff" -- so it had a FAIL branch and no PASS branch,
-    # and printed NOT CHECKABLE on every skill that did not trip the list
-    # above. It now grades what it reads. Its premise is always present --
-    # the phrasing it looks for would be in the body, and the body is always
+    # This gate grades what it reads. Its premise is always present -- the
+    # phrasing it looks for would be in the body, and the body is always
     # there to scan -- so a clean scan is a decided PASS, not a vacuous one.
     # Whether the skill works in a fresh session is still no gate's to
     # decide: print_report names it under every verdict (NOT_GRADED).
     return "PASS", "No phrasing that leans on an earlier chat (\"as we discussed\", \"like last time\").", ""
 
 
+HEADING = re.compile(r"^(#{1,6})\s+\S")
+FENCE = re.compile(r"^\s*(?:```|~~~)")
+
+
+def _headings(body):
+    """(offset, level) of every markdown heading. A `#` line inside a code
+    fence is a comment in someone's script, not a heading."""
+    heads, pos, fenced = [], 0, False
+    for line in body.splitlines(True):
+        if FENCE.match(line):
+            fenced = not fenced
+        elif not fenced:
+            m = HEADING.match(line)
+            if m:
+                heads.append((pos, len(m.group(1))))
+        pos += len(line)
+    return heads
+
+
+def _sections(body, heads=None):
+    """(start, end) of every heading's section: from the heading line to the
+    next heading of the same or a higher level."""
+    heads = _headings(body) if heads is None else heads
+    out = []
+    for i, (start, level) in enumerate(heads):
+        end = next((s for s, lv in heads[i + 1:] if lv <= level), len(body))
+        out.append((start, end))
+    return out
+
+
+def _section_of(body, sections, offset):
+    """The innermost section holding `offset`, or the text before the first
+    heading when the offset sits there."""
+    inside = [(s, e) for s, e in sections if s <= offset < e]
+    if inside:
+        return max(inside)
+    first = min((s for s, _ in sections), default=len(body))
+    return (0, first) if offset < first else (0, len(body))
+
+
 def gate7(sk):
     text = sk["body"]
-    example = has(EXAMPLE_MARKERS, text, flags=re.IGNORECASE | re.MULTILINE)
-    catch = has(CATCH_MARKERS, text)
-    if example and catch:
-        return "PASS", "A worked example is present and shows a catch, not just the happy path.", ""
-    if example and not catch:
+    flags = re.IGNORECASE | re.MULTILINE
+    heads = _headings(text)
+    real = {at for at, _ in heads}
+    worked = sorted({m.start() for pat in WORKED_EXAMPLE_MARKERS
+                     for m in re.finditer(pat, text, flags)
+                     if not pat.startswith("^#") or m.start() in real})
+    if worked:
+        # The catch has to be in the example's own section. Counted anywhere
+        # in the body, an "instead of" three sections away passed a skill
+        # whose worked example had been deleted outright.
+        sections = _sections(text, heads)
+        for at in worked:
+            lo, hi = _section_of(text, sections, at)
+            nl = text.find("\n", lo)
+            if text.startswith("#", lo) and 0 <= nl < hi:  # "(a catch, not a happy path)" in a heading is a claim
+                lo = nl + 1
+            if has(CATCH_MARKERS, _masked(text[lo:hi])):  # `silently-dropped` in code is a mention
+                return "PASS", "A worked example is present and shows a catch, not just the happy path.", ""
         return "REVIEW", "An example is present but reads like a happy path.", \
             "Confirm at least one example shows the skill catching a case that would otherwise go wrong. (Gate 7)"
+    if has(INLINE_EXAMPLE_MARKERS, text, flags=flags):
+        return NOTCHECK, "Examples appear only inline (\"for example\", \"e.g.\", a mention), and none is set " \
+            "out in a section the lint can read for a catch.", \
+            "Confirm by eye that at least one example shows a catch, not the happy path -- or set one out under " \
+            "its own heading, with the case that goes wrong. (Gate 7)"
     # The message already conceded the lint may simply have failed to read the
     # file; reporting that concession as REVIEW charged the skill for it.
     return NOTCHECK, "No example detected by the lint — it may present usage in a form the lint can't read (e.g. code recipes).", \
@@ -607,7 +1085,15 @@ REF_TRAILING = ".,:;!?)]}\u2019\u201d"
 
 INLINE_CODE = re.compile(r"`([^`\n]+)`")
 FENCED_CODE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
-MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+# [text](target "title") and [text](<target>) as well as [text](target)
+MD_LINK = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+# [label]: target -- the definition a reference-style link [text][label] points at
+REF_DEF = re.compile(r"(?m)^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?")
+# scripts/lint.py:3 is a line in a file, not a file named "lint.py:3"
+LINE_REF = re.compile(r":\d+(?::\d+)?$")
+# "write it to `scripts/x.py` in the user's repository": a file the model authors
+AUTHORED_LINE = re.compile(r"\bthe user'?s (?:repo|repository|project|workspace|working directory)\b",
+                           re.IGNORECASE)
 
 # A path on a line that announces itself as illustrative is not a claim to
 # ship that file. Skills about skills are full of these -- "**Examples**:
@@ -621,6 +1107,7 @@ ILLUSTRATIVE = re.compile(
     re.IGNORECASE)
 
 TOKEN_RUN = re.compile(r"\S+")
+PROSE_PATH = re.compile(r"(?<![\w`/.(\[-])([A-Za-z0-9_-]+/[\w./-]*\.[A-Za-z0-9]+)(?![\w/])")
 
 # A pointer verb immediately before the path is the skill telling you the file
 # is THERE -- "see `references/api.md`", "load `references/schema.md`". That,
@@ -659,16 +1146,20 @@ def _ref_tokens(body):
     spans = [(m.start(1), m.group(1), False) for m in INLINE_CODE.finditer(body)]
     spans += [(m.start(1), m.group(1), False) for m in FENCED_CODE.finditer(body)]
     spans += [(m.start(1), m.group(1), True) for m in MD_LINK.finditer(body)]
+    spans += [(m.start(1), m.group(1), True) for m in REF_DEF.finditer(body)]
 
     out = []
     for base, inner, linked in spans:
-        prev = None
+        after_interp = False
         for m in TOKEN_RUN.finditer(inner):
             raw = m.group(0)
-            tok = raw.strip().rstrip(REF_TRAILING).replace("\\", "/")
-            invoked = tok.startswith("./") or (prev is not None and prev.lower() in INTERPRETERS)
-            prev = raw
+            tok = LINE_REF.sub("", raw.strip().rstrip(REF_TRAILING).replace("\\", "/"))
+            invoked = tok.startswith("./") or after_interp
+            # "python3 -u scripts/x.py": flags between interpreter and script
+            after_interp = raw.lower() in INTERPRETERS or (after_interp and raw.startswith("-"))
             tok = tok[2:] if tok.startswith("./") else tok
+            if linked:  # a link target is a URL: drop its #fragment, decode %20
+                tok = unquote(tok.split("#", 1)[0])
             if not tok or REF_REJECT.search(tok) or not os.path.splitext(tok)[1]:
                 continue
             start = base + m.start()
@@ -702,10 +1193,12 @@ def _bundle_refs(sk):
         if strong:
             strong_any.add(tok)
 
+    authored = {t for line in sk["body"].splitlines() if AUTHORED_LINE.search(line)
+                for span in INLINE_CODE.findall(line) for t in span.split()}
     claims, skipped = [], []
     for tok in order:
         invoked = invoked_any[tok]
-        if illus_all[tok]:
+        if illus_all[tok] or tok in authored:
             skipped.append(tok)
         elif "/" in tok:
             # A path is this skill's business only if it starts in a directory
@@ -723,6 +1216,21 @@ def _bundle_refs(sk):
             claims.append(tok)
         else:
             skipped.append(tok)
+    # Plain prose too, but only a path under a folder this skill ships. Named
+    # in passing it is a weak claim: missing, REVIEW. After a pointer verb
+    # ("See references/style.md") it is pointed at, backticked or not, and
+    # missing it is a FAIL -- README's [R] rule names the verb, not the quoting.
+    prose = MD_LINK.sub(" ", INLINE_CODE.sub(" ", FENCED_CODE.sub(" ", sk["body"])))
+    for line in prose.splitlines():
+        if ILLUSTRATIVE.search(line):
+            continue
+        for m in PROSE_PATH.finditer(line):
+            tok = m.group(1)
+            if tok.split("/", 1)[0] in dirs and tok not in invoked_any and tok not in authored:
+                if tok not in claims:
+                    claims.append(tok)
+                if POINTER_VERB.search(line[:m.start()]):
+                    strong_any.add(tok)
     return claims, skipped, strong_any
 
 
@@ -877,11 +1385,12 @@ NOT_GRADED = ("Not graded: whether the skill works in a fresh session. "
 def cold_run_step(sk):
     """The run the lint cannot do, written for this skill.
 
-    Names the skill's own trigger when gate 2 found a declared prefix, so the
-    step is one a reader can take as written rather than a method to adapt.
+    Names the skill's own trigger when the description or body declares a
+    prefix, so the step is one a reader can take as written rather than a
+    method to adapt.
     """
     prefix = _declared_prefix(sk["description"] + "\n" + sk["body"])
-    task = ("a real task that starts with %s" % prefix.group(0)) if prefix \
+    task = ("a real task that starts with %s" % _as_code(prefix)) if prefix \
         else "a real request it should fire on"
     return ("Open a session where your own project instructions do not load, install the "
             "skill from its archive, give it %s, and check what it does against what the "
@@ -929,8 +1438,26 @@ def print_report(sk, findings, verdict, quiet=False):
     print()
 
 
+class Parser(argparse.ArgumentParser):
+    """argparse exits 2 on a usage error, and 2 is REVIEW here. A mistyped flag
+    read as "a gate needs a ruling" is a verdict on nothing, so usage errors
+    take a code of their own."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_USAGE, "%s: usage error: %s (exit %d, no verdict)\n"
+                  % (self.prog, message, EXIT_USAGE))
+
+
+def print_refusal(r):
+    print("skill_audit: REFUSED %s: %s." % (r["path"], r["reason"]), file=sys.stderr)
+    print("        -> %s" % r["fix"], file=sys.stderr)
+
+
 def main():
-    ap = argparse.ArgumentParser(add_help=True, description="Lint a Claude skill against the seven-gate Floor.")
+    # allow_abbrev off: "--jso" or "--no" is a usage error (exit 4), not a
+    # silent --json or --no-refs.
+    ap = Parser(add_help=True, allow_abbrev=False, description="Lint a Claude skill against the seven-gate Floor.")
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--quiet", action="store_true")
@@ -939,11 +1466,13 @@ def main():
                     help="skip the reference-resolution preflight")
     args = ap.parse_args()
 
-    skills = collect_skills(args.paths)
+    collected = collect_skills(args.paths)
+    refused = [r for r in collected if r.get("refused")]
+    skills = [sk for sk in collected if not sk.get("refused")]
+    for r in refused:
+        print_refusal(r)
     if not skills:
-        print("skill_audit: nothing gradable found. Point me at a skill directory "
-              "(with a SKILL.md), a SKILL.md file, or a folder of skills.", file=sys.stderr)
-        sys.exit(3)
+        sys.exit(EXIT_REFUSED)
 
     results = []
     for sk in skills:
@@ -992,10 +1521,13 @@ def main():
             print("| %s | %s | %s | %s |"
                   % (date.today().isoformat(), sk["name"], verdict, note))
 
-    # worst verdict across all skills drives the exit code: any FAIL -> 1,
-    # else any REVIEW -> 2, else 0.
+    # worst outcome across all inputs drives the exit code: any FAIL -> 1,
+    # else any refusal -> 3, else any REVIEW -> 2, else 0. A refusal outranks
+    # REVIEW and PASS because neither may stand for an input never graded;
+    # FAIL outranks it because "script against 1" must still catch every FAIL.
     codes = [code for (_s, _f, _v, code) in results]
-    sys.exit(1 if 1 in codes else (2 if 2 in codes else 0))
+    sys.exit(EXIT_FAIL if EXIT_FAIL in codes else EXIT_REFUSED if refused else
+             EXIT_REVIEW if EXIT_REVIEW in codes else EXIT_PASS)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,108 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v2.0.0 — 2026-10-27
+
+    Added   — SETUP.md: install steps for the claude.ai web app, Cowork
+              and the desktop app. Before, its steps covered the skills
+              folder on your machine, and the other surfaces got one
+              sentence: that your claude.ai account is where their skills
+              live. Each step not yet walked through with this skill is
+              marked so.
+    Added   — skill-audit-upload.zip, a second download for the claude.ai
+              account (web chat, the desktop app, Cowork): SKILL.md,
+              skill_audit.py and the four documents. The account upload
+              refused skill-audit.zip, which holds the plugin manifest and
+              six fixture SKILL.md files: "A skill cannot contain a plugin
+              manifest" and "Zip must contain exactly one SKILL.md file".
+              skill-audit.zip is unchanged and is still the Claude Code
+              download. SETUP.md says which file goes where.
+
+    Changed — exit codes: a usage error (an unknown flag, no path) exits 4,
+              not 2. argparse's own code was 2, which is REVIEW here, so a
+              mistyped flag read as "a gate needs a ruling".
+    Changed — exit 3 is now REFUSED, not ERROR, and covers a SKILL.md the
+              lint cannot read as written: a UTF-8 byte-order mark, UTF-16,
+              binary, bytes that are not UTF-8, an empty file, and
+              frontmatter missing or never closed. Each graded REVIEW (exit 2)
+              until this change. The reason and its fix print on stderr as
+              "skill_audit: REFUSED PATH: REASON."
+    Changed — every path given must hold something gradable. A path with
+              nothing at it is refused (exit 3) even beside a skill that
+              grades; before, it was dropped and the other skill's verdict
+              stood as the run's. Across several inputs any FAIL still exits
+              1, then any refusal 3, then REVIEW 2.
+    Changed — tests/test_fixtures.py asserts each refusal and each usage
+              exit, runs each documented path form (a SKILL.md as a file, a
+              folder of skills, --json, --log-row), runs the after-example's
+              check_notes.py on every exit it documents, and runs itself
+              against a checker that grades nothing to prove it can fail
+              (51 cases, was 12).
+    Fixed   — gate 4: "the check confirms it" did not count as a
+              verification step, so a skill that counts its limit and says
+              so that way got a false FAIL. A confirm with "it" or "them"
+              as its object now counts; "confirm that ..." still does not,
+              because that is usually a question for the user.
+    Fixed   — examples/after/release-notes/check_notes.py crashed with exit 1
+              (a tripped hard-fail, by its own table) when its output stream
+              could not encode the em dash it prints: a cp437 console or
+              pipe, or a POSIX C locale. It now substitutes the character and
+              exits as documented. UTF-8 output is byte-identical.
+    Changed — gate 2: a prefix counts as a deterministic entry only where
+              the description declares it, because the description is the
+              one field read when a skill is chosen. A prefix declared only
+              in the body is REVIEW, with the fix. The description may quote
+              the prefix ("audit:") as well as backtick it.
+    Changed — gate 4: a countable constraint is recognised in lines,
+              sentences, bullets, pages, paragraphs, items and rows as well
+              as characters and words; in spelled-out numbers ("above two
+              lines") as well as digits; and as a range ("2-3 sentences",
+              "between 3 and 5 bullets"). Each still needs a limiting word
+              or construction beside it: a bare "(1-2 words)" is not a rule.
+    Changed — gate 7: the catch has to sit inside the worked example's own
+              section. A worked example is one set out under a heading, an
+              Input:/Output: pair or a bold "Example" label; when the only
+              examples are inline ("for example", "e.g.", a mention of "the
+              worked example") the row is NOT CHECKABLE, not PASS. A `#` line
+              inside a code fence is not a heading.
+    Changed — tests/test_fixtures.py asserts each of the three as a pair:
+              the anti-pattern, and the same skill fixed.
+    Measured — on 33 skills from Anthropic's official plugin marketplace
+              (2026-10-06): no new FAIL and no verdict changed. Gate 7 moved
+              from PASS to REVIEW on four and to NOT CHECKABLE on two, and
+              from REVIEW to NOT CHECKABLE on one; gate 4 moved from NOT
+              CHECKABLE to PASS on two.
+    Fixed   — gate 4: a limit written with a thousands separator ("under
+              1,500 characters") was not seen, so it graded NOT CHECKABLE
+              where "under 1500 characters" FAILs.
+    Fixed   — gate 4: a limit inside a fenced code block (a prompt
+              template the skill writes) is shown, not used, and no longer
+              FAILs. A verification step inside a fence still counts.
+    Fixed   — gate 3: a script named after "enforced by" is met when a
+              script of that name ships anywhere in the skill, such as in a
+              scripts/ folder; before, only one beside SKILL.md counted, and
+              the gate FAILed.
+    Fixed   — gate 4: a number stated as a fact no longer FAILs because a
+              directing word sits in another clause ("Slack truncates
+              messages over 4,000 characters, so never paste a whole log").
+    Fixed   — gate 4: a limit in quotes, italics or inline code is a
+              mention, as README says for every gate.
+    Fixed   — gate 4: a check beside the limit that "exits 1 when" it is
+              broken counts as verifying it.
+    Fixed   — gate 3: a check described in words is no longer voided by an
+              unrelated file named in another sentence (a config file of the
+              user's); a missing script named as the check still FAILs.
+    Changed — gate 4: skill-audit's own SKILL.md now reads NOT CHECKABLE
+              there (its only limit is quoted in the worked example, a
+              mention); README's self-audit block is the new live run.
+    Fixed   — gate 5: a named exit hard-wrapped across two lines ("if\n
+              the file ..., stop and say so") is read as one sentence.
+    Fixed   — gate 6: reads "our previous session" (and last, prior,
+              earlier) as README lists it; "the transcript of the previous
+              session" the user hands over is a file, not a prior turn.
+    Changed — a flag cut short ("--jso", "--no") is a usage error (exit 4);
+              before, it was read as the flag it prefixes.
+
 ## v1.2.3 — 2026-09-23
 
     Changed — asked to audit a skill and rewrite it in the same breath, the

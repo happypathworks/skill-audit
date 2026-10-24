@@ -7,13 +7,18 @@ something that exits non-zero, instead of being three sentences of prose.
 
 exit 0  every check passed
 exit 1  a hard-fail tripped
-exit 3  the input is not a changelog (the scope boundary)
+exit 3  an input is unreadable, or the changelog is not one (the scope boundary)
 """
 import argparse
 import re
 import sys
 
 BUDGET = 200
+
+# The report prints an em dash. A stream that cannot encode it (a cp437
+# console or pipe, a POSIX C locale) would raise mid-print and exit 1, which
+# reads as a tripped hard-fail. Substitute the character instead.
+getattr(sys.stdout, "reconfigure", lambda **_: None)(errors="replace")
 
 
 def main():
@@ -26,7 +31,7 @@ def main():
     try:
         with open(args.changelog, encoding="utf-8") as fh:
             src = fh.read()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         print(f"release-notes: cannot read {args.changelog}: {exc}")
         return 3
 
@@ -38,25 +43,26 @@ def main():
     failed = False
 
     if args.version:
-        if args.version not in src:
+        # the whole version, not a prefix of a longer one (v2.0 is not v2.0.4)
+        if not re.search(r"(?<![\w.])%s(?![\w]|\.\d)" % re.escape(args.version), src):
             print(f"  version {args.version!r} not found in {args.changelog}")
             failed = True
         else:
             print(f"  version {args.version!r} found — ok")
 
-    unreleased = re.search(r"^##\s+Unreleased\s*$(.*?)(?=^##\s|\Z)",
+    unreleased = re.search(r"^##\s+\[?Unreleased\]?\s*$(.*?)(?=^##\s|\Z)",
                            src, re.M | re.S)
     unreleased_items = []
     if unreleased:
-        unreleased_items = [ln.strip("- ").strip()
+        unreleased_items = [ln.strip().lstrip("-*+ ").strip()
                             for ln in unreleased.group(1).splitlines()
-                            if ln.strip().startswith("-")]
+                            if ln.strip().startswith(("-", "*", "+"))]
 
     if args.summary_file:
         try:
             with open(args.summary_file, encoding="utf-8") as fh:
                 summary = fh.read().strip()
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             print(f"release-notes: cannot read {args.summary_file}: {exc}")
             return 3
 
