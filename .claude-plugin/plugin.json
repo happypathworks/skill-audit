@@ -8,5 +8,11 @@
   },
   "homepage": "https://github.com/happypathworks/skill-audit",
   "repository": "https://github.com/happypathworks/skill-audit",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": ["skill", "lint", "audit", "quality", "skill-md", "review"],
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://happypath.works/free/skill-audit/",
+  "supportUrl": "https://happypath.works/policies/#support",
+  "privacyPolicyUrl": "https://happypath.works/policies/#privacy",
+  "termsOfServiceUrl": "https://happypath.works/policies/#license"
 }
