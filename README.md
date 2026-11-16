@@ -4,6 +4,8 @@ Points at a Claude skill and grades it against a seven-gate quality floor —
 published in full further down this page. Reports gate by gate, with one
 concrete fix per miss, and exits with a code you can script against.
 
+Product page: https://happypath.works/free/skill-audit/ — from [Happy Path Works](https://happypath.works/).
+
 Free, MIT, no dependencies. If you have Python 3.8 or newer, you can run this.
 
 ## The gap it closes
