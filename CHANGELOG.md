@@ -14,6 +14,10 @@ you tell.
     Added   — plugin.json: an icon, keywords and listing links
               (documentation, support, privacy, terms) for the plugin
               directory.
+    Changed — the acceptance workflow's Linux job runs on ubuntu-24.04
+              instead of ubuntu-latest. The label moved to Ubuntu 26.04,
+              which has no Python 3.8 build, and the 3.8 leg failed at setup
+              before any test ran.
     Changed — nothing in skill_audit.py, SKILL.md, the examples or the
               fixture test. Every verdict and every exit code is what v2.0.0
               returned.
