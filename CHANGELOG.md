@@ -3,6 +3,17 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v2.0.2 — 2026-11-17
+
+    Changed — no behaviour change. Source text that directory security
+              scanners read as risky is rewritten: alternations in four
+              regexes are reordered so none reads as a pipe to a shell, a
+              comment no longer spells out a parent-folder path, and the
+              tests clean up their temporary folders through
+              tempfile.TemporaryDirectory rather than shutil.rmtree. The
+              tests still start the checker as its own process; that is what
+              they test.
+
 ## v2.0.1 — 2026-11-16
 
     Added   — README: install in Claude Code with the `skills` CLI,

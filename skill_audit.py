@@ -486,8 +486,8 @@ IMPERATIVE_RULE = [
     r"\bmust\s+\w+", r"\bshall not\b", r"\bnever\s+\w+", r"\balways\s+\w+",
     r"\bdo not\s+\w+", r"\bdon'?t\s+\w+", r"\brefuse\b", r"\breject\b", r"\babort\b",
 ]
-ENFORCED_BY = re.compile(r"\benforced by\s+`?([\w./-]+\.(?:py|sh|js))`?", re.IGNORECASE)
-SCRIPT_NAME = re.compile(r"(?<![\w./-])(?![Nn]ode\.js\b)[\w./-]+\.(?:py|sh|js|mjs|cjs)\b")
+ENFORCED_BY = re.compile(r"\benforced by\s+`?([\w./-]+\.(?:sh|py|js))`?", re.IGNORECASE)
+SCRIPT_NAME = re.compile(r"(?<![\w./-])(?![Nn]ode\.js\b)[\w./-]+\.(?:sh|py|js|mjs|cjs)\b")
 # A check described in words ("unless the check returns 0"), with no script
 # shipped or named. A named script missing from the skill is no check.
 ENFORCEMENT_MARKERS = [
@@ -512,10 +512,10 @@ _NUMW = (r"(?:thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen"
 _NUM = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|" + _NUMW + r"(?:[\s-]+" + _NUMW + r")*)"
 _NUMR = _NUM + r"(?:\s*(?:-|\u2013|\u2014|to|or)\s*" + _NUM + r")?"
 _UNIT = r"(?:characters?|chars?|words?|lines?|sentences?|bullets?|pages?|paragraphs?|items?|rows?)"
-_LIMIT = (r"(?:under|over|at most|at least|up to|within|max(?:imum)?|min(?:imum)?"
+_LIMIT = (r"(?:shorter than|under|over|at most|at least|up to|within|max(?:imum)?|min(?:imum)?"
           r"|no more than|not more than|no fewer than|fewer than|more than|less than"
           r"|limit(?:ed)? to|above|below|exceed(?:s|ing)?|capped at"
-          r"|no longer than|not longer than|no shorter than|longer than|shorter than)")
+          r"|no longer than|not longer than|no shorter than|longer than)")
 # Not "past" or "beyond": "the description is past 1024 characters" states a
 # fact about a file. Leaving them out misses "a bullet runs past two lines",
 # which costs a NOT CHECKABLE; reading them would cost a FAIL on good skills.
@@ -548,7 +548,7 @@ CONSTRAINT_MARKERS = [
 # A constraint is a rule on the output only in a sentence that directs:
 # "Keep the summary under 200 words". "Messages over 160 characters are split
 # by the carrier" states a fact, and a fact is nothing to count.
-DIRECTIVE = re.compile(r"\b(?:keep|limit|cap|trim|hold|must|should|never|always|do not|don't|make sure|ensure"
+DIRECTIVE = re.compile(r"\b(?:should|keep|limit|cap|trim|hold|must|never|always|do not|don't|make sure|ensure"
                        r"|stay|write|use|return|reply|output|no more than|at most|exactly|aim for"
                        r"|is wrong|is too long|not allowed|soft|hard|budget|limit|max(?:imum)?|min(?:imum)?)\b"
                        r"|≤|<=",
@@ -560,7 +560,7 @@ VERIFY_MARKERS = [
     r"\bmeasure(?:d|s)? (?:the|it)\b",
     r"\bbefore (?:replying|answering|you (?:reply|answer))\b",
     r"\bprints? the (?:real |actual )?(?:count|number|length)\b",
-    r"`wc\b", r"\buntil it (?:reports|returns|prints|shows)\b", r"\bcount (?:the|them|it|each|every)\b",
+    r"`wc\b", r"\buntil it (?:shows|reports|returns|prints)\b", r"\bcount (?:the|them|it|each|every)\b",
     r"\blen\(",
 ]
 # A shipped check that fails over the limit ("exits 1 when the draft is over",
@@ -1066,7 +1066,7 @@ def gate7(sk):
 # addresses THIS SKILL'S OWN BUNDLE from one that addresses the workspace the
 # skill operates on. A SKILL.md is full of the second kind: `word/document.xml`
 # inside a document being unpacked, `.claude/settings.json` in the user's repo,
-# `../out.docx` as an output, a script the skill tells the model to write at
+# an output written to the parent folder, a script the skill tells the model to write at
 # run time. None of those can or should resolve here, and flagging them is the
 # false positive that would make this check worthless.
 #

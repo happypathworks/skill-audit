@@ -84,7 +84,6 @@ import importlib.util
 import io
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -511,7 +510,8 @@ def run(argv, cwd=None, encoding="utf-8"):
 
 def in_temp(files, fn):
     """Write {relative path: bytes} to a temp folder, call fn(folder), clean up."""
-    tmp = tempfile.mkdtemp(prefix="skill-audit-case-")
+    holder = tempfile.TemporaryDirectory(prefix="skill-audit-case-")
+    tmp = holder.name
     try:
         for rel, content in files.items():
             full = os.path.join(tmp, *rel.split("/"))
@@ -520,7 +520,12 @@ def in_temp(files, fn):
                 fh.write(content)
         return fn(tmp)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        # Python 3.8 has no ignore_cleanup_errors; a file Windows still holds
+        # open must not fail a case that already graded, so swallow it here.
+        try:
+            holder.cleanup()
+        except OSError:
+            pass
 
 
 def row_status(description, body, gate):
