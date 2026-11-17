@@ -201,7 +201,13 @@ phrase shown in quotes, italics or code in the skill is a mention, not a use.
 
 ## Install
 
-Drop the folder into your skills directory:
+In Claude Code, the [`skills` CLI](https://skills.sh/) installs it with one
+command, into `.claude/skills/skill-audit/` under the folder you run it from.
+`npx` needs Node; the skill itself does not:
+
+    npx skills add happypathworks/skill-audit --agent claude-code
+
+Or drop the folder into your skills directory:
 
     git clone https://github.com/happypathworks/skill-audit.git \
       ~/.claude/skills/skill-audit
