@@ -3,6 +3,21 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v2.0.1 — 2026-11-16
+
+    Added   — README: install in Claude Code with the `skills` CLI,
+              `npx skills add happypathworks/skill-audit --agent claude-code`,
+              beside the folder copy. Tested 2026-11-16 in an empty folder:
+              the installed files matched the repository byte for byte and
+              the self-audit passed from the installed copy.
+    Added   — README: a link to the product page on happypath.works.
+    Added   — plugin.json: an icon, keywords and listing links
+              (documentation, support, privacy, terms) for the plugin
+              directory.
+    Changed — nothing in skill_audit.py, SKILL.md, the examples or the
+              fixture test. Every verdict and every exit code is what v2.0.0
+              returned.
+
 ## v2.0.0 — 2026-10-27
 
     Added   — SETUP.md: install steps for the claude.ai web app, Cowork
