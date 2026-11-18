@@ -318,6 +318,15 @@ errors exit `4`. The clean ones are the assertions that matter: a lint that
 fails good input loses a stranger's trust on first contact, and there is no
 second contact.
 
+A note for anyone reading a security scan of this repository: the tests start
+`skill_audit.py` as a separate process with `subprocess.run`, and they do it on
+purpose. Exit codes and output encoding are part of what is tested, and only a
+separate process sees them the way a caller does. Every call runs the current
+Python interpreter on a file in this repository, from an argument list, with no
+shell. A scanner that flags `subprocess` in `tests/test_fixtures.py` is reading
+those calls. The checker itself, `skill_audit.py`, starts no process, opens no
+network connection and writes no file.
+
 ## What it does not do
 
 It does not rewrite your skill — it diagnoses and points; fixing is a separate
