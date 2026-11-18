@@ -3,6 +3,13 @@
 Every release, dated and versioned. Pirated copies go stale; this file is how
 you tell.
 
+## v2.0.3 — 2026-11-18
+
+    Added   — README: a note under Tests on why the tests start the
+              checker as a separate process (exit codes and output
+              encoding as a caller sees them), with no shell. No change
+              to the checker or the tests.
+
 ## v2.0.2 — 2026-11-17
 
     Changed — no behaviour change. Source text that directory security
